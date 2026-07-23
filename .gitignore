@@ -1,0 +1,23 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# Local credentials — never commit (published only to a private Kaggle dataset)
+secrets
+*.env
+
+# Agent / editor tooling (machine-local, not project artifacts)
+.agents/
+.claude/
+
+# Model weights & caches — models live on the Hugging Face Hub, not in the repo
+hf_home/
+*.safetensors
+*.ckpt
+*.pt
