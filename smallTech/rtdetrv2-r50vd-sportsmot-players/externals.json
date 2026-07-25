@@ -1,0 +1,14 @@
+{
+  "externals": [
+    {
+      "service": "kaggle",
+      "reference": "rtdetrv2-r50vd-sportsmot-players",
+      "path": "external/kaggle/rtdetrv2-r50vd-sportsmot-players",
+      "used_for": [
+        "data-preparation",
+        "trainingandevaluation"
+      ],
+      "notes": "Free-tier route: CPU kernel stages the SportsMOT train split inside Kaggle's network; T4 x2 kernel trains from that staged tar. Launched via the workspace run.sh / run.ps1 launcher, which resolves this reference."
+    }
+  ]
+}

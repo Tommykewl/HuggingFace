@@ -1,0 +1,24 @@
+{
+  "runner": "kaggle-kernel",
+  "slug": "sportsmot-train-download",
+  "kernel_metadata": {
+    "language": "python",
+    "kernel_type": "notebook",
+    "is_private": true,
+    "enable_gpu": false,
+    "enable_internet": true,
+    "dataset_sources": [
+      "external-secrets"
+    ],
+    "kernel_sources": [],
+    "competition_sources": [],
+    "model_sources": []
+  },
+  "notes": [
+    "slug is PINNED to sportsmot-train-download: that kernel already exists with a COMPLETE run whose output (sportsmot-train.tar, 6.64 GB) the training configs reference via kernel_sources — re-pushing under this slug versions the same kernel instead of orphaning the staged data.",
+    "CPU-only on purpose (enable_gpu=false): downloading data must not burn GPU quota.",
+    "To resume a PARTIAL run, add this same slug to kernel_sources so the previous version's tar is mounted; the notebook auto-detects it and downloads only the remainder.",
+    "external-secrets provides HF_TOKEN for higher Hub rate limits (works without it too)."
+  ],
+  "timeout_seconds": null
+}

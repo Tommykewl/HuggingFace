@@ -12,16 +12,24 @@ for basketball player tracking.
 
 ## Files
 
+This folder (the model's first-party pipeline):
+
 | File | Purpose |
 |---|---|
-| `trainer.py` | Training script for **Hugging Face Jobs** (`hf jobs uv run`). Self-contained uv script; targets an A10G GPU (bf16, batch 8). |
-| `trainer.kaggle.ipynb` | The same training run as a **Kaggle** notebook, adapted for the free T4 GPU (fp16 instead of bf16, smaller batch + grad-accum, `pip install` of extras). Pushes to the Hub when an `HF_TOKEN` secret is attached, otherwise saves the model to the kernel output. |
-| `inference.py` | Loads the trained model from the Hub, runs it on a video or a folder of frames, applies **ByteTrack**, and writes an annotated MP4 with persistent player IDs. |
+| `inferenceandtesting/inference.py` | Loads the trained model from the Hub, runs it on a video or a folder of frames, applies **ByteTrack**, and writes an annotated MP4 with persistent player IDs. Runs locally (CUDA / MPS / CPU). |
+| `inferenceandtesting/inference.config.json` | How to run it, plus the collated `hf jobs uv run` option reference for a cloud-GPU alternative. |
+| `externals.json` | Declares the external services this model uses — currently the Kaggle external below. |
 | `README.md` | This file. |
 
-The Kaggle launcher is the shared `kaggle_train.sh` at the **workspace root** — see
-the [workspace README](../../README.md). It is generic and takes this model's path
-as its argument; it does not live in this folder.
+Training and data staging run on **Kaggle** (free tier) and live in
+[`external/kaggle/rtdetrv2-r50vd-sportsmot-players/`](../../external/kaggle/rtdetrv2-r50vd-sportsmot-players/):
+
+| File | Purpose |
+|---|---|
+| `data-preparation/prepare-data.kaggle.ipynb` | CPU-only kernel (no GPU quota), run **once**: mirrors the SportsMOT train split inside Kaggle's network and outputs `sportsmot-train.tar` (6.6 GB) as its kernel output. |
+| `trainingandevaluation/train.kaggle.ipynb` | The trainer (free T4, fp16, batch 4 + grad-accum 4). Mounts the staged tar, trains 20 epochs, evaluates mAP on a held-out basketball sequence, and pushes model + card to the Hub. |
+| `trainingandevaluation/smoketest.kaggle.ipynb` | Few-minute environment check run before the trainer: GPU/torch kernel compatibility, deps, Hub auth, the staged-data mount + untar, and a 25-step mock training. |
+| `*.config.json` (next to each notebook) | Kernel options (accelerator `machine_shape`, internet, `dataset_sources`, `kernel_sources` — including the `external-secrets` token dataset and the staging kernel's output) consumed by the kaggle service runner (`external/kaggle/service.py`). |
 
 ## The model
 
@@ -29,59 +37,57 @@ as its argument; it does not live in this folder.
 - **Approach:** the COCO detection head of RT-DETRv2 is replaced with a one-class
   head (`ignore_mismatched_sizes=True`) while reusing the pretrained backbone.
 - **Data:** only the `train/` split of SportsMOT carries ground-truth boxes
-  (10 sequences across basketball / soccer / volleyball). We train on 9 of them
-  and hold out one **basketball** sequence (`v_-6Os86HzwCs_c009`) for validation,
-  so metrics reflect the target domain. Annotations are MOTChallenge `gt.txt`
-  (`frame, track_id, x, y, w, h, conf, class, visibility`); only per-frame boxes
-  are used for detection (track_id is ignored here, but is what ByteTrack rebuilds
-  at inference time).
+  (45 sequences, ~28.5k frames / 6.6 GB, across basketball / soccer / volleyball).
+  One **basketball** sequence (`v_-6Os86HzwCs_c009`) is held out for validation,
+  so metrics reflect the target domain; the rest are training. Annotations are
+  MOTChallenge `gt.txt` (`frame, track_id, x, y, w, h, conf, class, visibility`);
+  only per-frame boxes are used for detection (track_id is ignored here, but is
+  what ByteTrack rebuilds at inference time).
+- **Data staging:** bulk-fetching ~28k small files from the Hub proved
+  unreliable everywhere it was tried (in-session downloads ate a whole GPU
+  session; residential IPs trip the Hub CDN's burst protection). So the data is
+  staged **once, inside Kaggle's own network** by the `prepare-data` CPU kernel,
+  whose output tar training kernels mount (`kernel_sources`) and untar locally
+  in ~2 minutes. The trainer auto-detects staged data and only falls back to
+  the Hub download (with a loud warning) when none is mounted.
 
-## Training configuration
+## Training configuration (Kaggle T4)
 
-| | `trainer.py` (HF Jobs) | `trainer.kaggle.ipynb` (Kaggle T4) |
-|---|---|---|
-| GPU | A10G (24 GB) | T4 (16 GB) |
-| Precision | bf16 | fp16 (T4 has no bf16) |
-| Batch / grad-accum | 8 / 2 | 4 / 4 |
-| Effective batch | 16 | 16 |
-| Epochs | 20 | 20 |
-| Image size | 640×640 | 640×640 |
-| LR / schedule | 5e-5 / cosine, 300 warmup | same |
-| Frame stride | 2 (train), 5 (val) | same |
-| Augmentation | hflip, brightness/contrast, hue/sat, gauss noise | same |
-| Model selection | best `eval_loss` | same |
+| | value |
+|---|---|
+| GPU | T4 (16 GB; one of the session's two — DataParallel corrupts detection labels) |
+| Precision | fp16 (T4 has no native bf16; emulated bf16 is several times slower) |
+| Batch / grad-accum | 4 / 4 (effective 16) |
+| Epochs | 20 |
+| Image size | 640×640 |
+| LR / schedule | 5e-5 / cosine, 300 warmup |
+| Frame stride | 2 (train), 5 (val) |
+| Augmentation | hflip, brightness/contrast, hue/sat, gauss noise |
+| Model selection | best `eval_loss` |
 
-Both scripts push the model, image processor, and a metrics-filled model card to
-the Hub when training completes.
+The trainer pushes the model, image processor, and a metrics-filled model card
+to the Hub when training completes.
 
 ## Usage
 
-**Train on Hugging Face Jobs** (needs prepaid Jobs credits):
+**Train on Kaggle (free)** — from the workspace root via the launcher
+(`run.sh`; Windows: `run.ps1`); see the [workspace README](../../README.md) for
+one-time Kaggle CLI + `external-secrets` setup:
 
 ```bash
-hf jobs uv run trainer.py --flavor a10g-large --timeout 6h --detach \
-  --name rtdetrv2-sportsmot --secrets "HF_TOKEN=$(hf auth token)"
+./run.sh smallTech/rtdetrv2-r50vd-sportsmot-players/data-preparation/prepare-data   # once: stage data (CPU)
+./run.sh smallTech/rtdetrv2-r50vd-sportsmot-players/trainingandevaluation/smoketest # minutes: env check
+./run.sh smallTech/rtdetrv2-r50vd-sportsmot-players/trainingandevaluation/train     # the real training run
 ```
-
-**Train on Kaggle (free):** either open `trainer.kaggle.ipynb` in a Kaggle notebook
-(GPU T4 + Internet + **Add Data → your `external-secrets` dataset**, then Run All),
-or drive it headless from the workspace root:
-
-```bash
-./kaggle_train.sh smallTech/rtdetrv2-r50vd-sportsmot-players
-```
-
-See the [workspace README](../../README.md) for Kaggle CLI setup and how the HF
-token is supplied via the private `external-secrets` dataset.
 
 **Run tracking on the trained model:**
 
 ```bash
 # a video file
-uv run inference.py --source game_clip.mp4
+uv run inferenceandtesting/inference.py --source game_clip.mp4
 
 # a folder of frames (e.g. a SportsMOT test sequence)
-uv run inference.py --source path/to/v_XXXX/img1 --fps 25
+uv run inferenceandtesting/inference.py --source path/to/v_XXXX/img1 --fps 25
 ```
 
 `inference.py` auto-selects CUDA / Apple MPS / CPU, so it runs locally on modest

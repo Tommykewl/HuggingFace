@@ -1,0 +1,25 @@
+{
+  "runner": "kaggle-kernel",
+  "slug": null,
+  "kernel_metadata": {
+    "language": "python",
+    "kernel_type": "notebook",
+    "is_private": true,
+    "enable_gpu": true,
+    "machine_shape": "NvidiaTeslaT4",
+    "enable_internet": true,
+    "dataset_sources": [
+      "external-secrets"
+    ],
+    "kernel_sources": [
+      "sportsmot-train-download"
+    ],
+    "competition_sources": [],
+    "model_sources": []
+  },
+  "notes": [
+    "Identical mounts to train.config.json on purpose: the smoke test's job is to validate, in a few minutes, exactly the environment the real trainer will see (GPU/torch kernels, deps, HF token, staged-data mount + untar, mock training).",
+    "Derived slug: <model>-smoketest."
+  ],
+  "timeout_seconds": null
+}

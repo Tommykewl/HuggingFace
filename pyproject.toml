@@ -1,0 +1,19 @@
+# Workspace launcher dependencies, installed by uv (see run.sh / run.ps1:
+# after the prerequisite checks they install uv if missing, then `uv sync`
+# this file and execute run.py inside the resulting environment).
+#
+# The hf and kaggle CLIs are NOT prerequisites: they are thin wrappers around
+# these libraries, which run.py and the service runners call directly. The
+# [cli] extra still provides the `hf` entry point inside the environment
+# (`uv run hf auth login`), and the kaggle package ships its CLI likewise
+# (`uv run kaggle kernels status ...`) — handy for auth setup and monitoring.
+
+[project]
+name = "huggingface-workspace"
+version = "0.1.0"
+description = "Launcher tooling for the Hugging Face training workspace (run.py + service runners)"
+requires-python = ">=3.10"
+dependencies = [
+    "huggingface_hub[cli]>=0.30",
+    "kaggle>=1.7",
+]
