@@ -21,3 +21,6 @@ hf_home/
 *.safetensors
 *.ckpt
 *.pt
+
+# Local run logs
+logs/
