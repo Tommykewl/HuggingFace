@@ -12,9 +12,14 @@ for basketball player tracking.
 
 ## Files
 
-This folder holds only `externals.json` (and this README): every operation —
-data staging, training, and benchmarking — is delegated to **Kaggle** (free
-tier) and lives in
+**First-party (runs on Hugging Face):**
+
+| File | Purpose |
+|---|---|
+| `inference/index.kaggle.ipynb` | The model repo's **Colab/Kaggle notebook template**: uploaded to the Hub as `notebook.ipynb`, it backs the "Use this model → Colab/Kaggle" buttons and the [/colab](https://huggingface.co/smallTech/rtdetr-sportsmot/colab) / [/kaggle](https://huggingface.co/smallTech/rtdetr-sportsmot/kaggle) links — self-contained install → load → detect → visualize demo. Not delegated to any external service. |
+
+Every other operation — data staging, training, and benchmarking — is
+delegated to **Kaggle** (free tier) and lives in
 [`external/kaggle/rtdetr-sportsmot/`](../../external/kaggle/rtdetr-sportsmot/):
 
 | File | Purpose |
