@@ -10,6 +10,36 @@ tags:
 - basketball
 - player-detection
 - tracking
+model-index:
+- name: rtdetr-sportsmot
+  results:
+  - task:
+      type: object-detection
+      name: Player detection
+    dataset:
+      name: SportsMOT (val split, unseen by training)
+      type: Lekim89/sportsmot
+      split: validation
+    metrics:
+    - type: map
+      name: mAP@[.5:.95]
+      value: 0.7928
+      verified: false
+    - type: map50
+      name: mAP@50
+      value: 0.9383
+      verified: false
+    - type: map75
+      name: mAP@75
+      value: 0.882
+      verified: false
+    - type: mar100
+      name: mAR@100
+      value: 0.8269
+      verified: false
+    source:
+      name: Kaggle evaluation kernel (benchmarks.json)
+      url: https://www.kaggle.com/code/tamobiswas/rtdetr-sportsmot-evaluation
 ---
 
 # rtdetr-sportsmot — RT-DETRv2 (r50vd) fine-tuned on SportsMOT for player detection

@@ -1,0 +1,40 @@
+# Hugging Face eval-results format (https://huggingface.co/docs/hub/en/eval-results):
+# uploaded to the model repo as .eval_results/testing.yaml. PERFORMANCE-ONLY
+# results from testing/index.kaggle.ipynb on the FULL SportsMOT test split
+# (150 sequences / 94,835 frames; no public ground truth, so no accuracy
+# metrics exist). Environment: Tesla T4 (sm_75, 15.6 GB), torch 2.10.0+cu128,
+# CUDA 12.8, transformers 5.0.0, 4 vCPUs; batched x8 fp16 autocast with
+# 4-thread image prefetch; timing CUDA-synchronized (preprocess + forward +
+# postprocess). 2026-07-27.
+# NOTE: Lekim89/sportsmot is not (yet) a registered Benchmark dataset on the
+# Hub — see the note in evaluation/results.yaml.
+
+- dataset:
+    id: Lekim89/sportsmot
+    task_id: test-throughput-fps
+  value: 28.0
+  date: "2026-07-27"
+  source:
+    url: https://www.kaggle.com/code/tamobiswas/rtdetr-sportsmot-testing
+    name: Testing kernel (logs + benchmarks.json)
+  notes: "GPU-timed throughput, batched x8 fp16 autocast, Tesla T4; 26.5 fps wall-clock"
+
+- dataset:
+    id: Lekim89/sportsmot
+    task_id: test-latency-p50-ms
+  value: 62.5
+  date: "2026-07-27"
+  source:
+    url: https://www.kaggle.com/code/tamobiswas/rtdetr-sportsmot-testing
+    name: Testing kernel (logs + benchmarks.json)
+  notes: "single-image latency p50 (batch 1, fp16, 300-frame probe); mean 74.4 / p90 68.1 / p99 90.1 ms"
+
+- dataset:
+    id: Lekim89/sportsmot
+    task_id: test-detections-per-frame
+  value: 10.16
+  date: "2026-07-27"
+  source:
+    url: https://www.kaggle.com/code/tamobiswas/rtdetr-sportsmot-testing
+    name: Testing kernel (logs + benchmarks.json)
+  notes: "mean detections per frame at conf >= 0.5; mean detection confidence 0.920"

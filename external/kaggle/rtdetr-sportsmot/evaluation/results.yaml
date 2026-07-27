@@ -1,0 +1,49 @@
+# Hugging Face eval-results format (https://huggingface.co/docs/hub/en/eval-results):
+# uploaded to the model repo as .eval_results/evaluation.yaml. Accuracy results
+# from evaluation/index.kaggle.ipynb on the UNSEEN SportsMOT val split
+# (26,970 frames / 295,573 gt boxes / 45 sequences, frame stride 1,
+# torchmetrics COCO mAP at detection threshold 0.01, Tesla T4, 2026-07-26).
+# NOTE: Lekim89/sportsmot is not (yet) a registered Benchmark dataset on the
+# Hub, so task_id values are descriptive metric names rather than ids from a
+# benchmark eval.yaml; leaderboard aggregation activates only if the dataset
+# owner registers it.
+
+- dataset:
+    id: Lekim89/sportsmot
+    task_id: val-map
+  value: 0.7928
+  date: "2026-07-26"
+  source:
+    url: https://www.kaggle.com/code/tamobiswas/rtdetr-sportsmot-evaluation
+    name: Evaluation kernel (logs + benchmarks.json)
+  notes: "mAP@[.5:.95]; full val split, unseen by training; torchmetrics COCO, conf 0.01"
+
+- dataset:
+    id: Lekim89/sportsmot
+    task_id: val-map50
+  value: 0.9383
+  date: "2026-07-26"
+  source:
+    url: https://www.kaggle.com/code/tamobiswas/rtdetr-sportsmot-evaluation
+    name: Evaluation kernel (logs + benchmarks.json)
+  notes: "mAP@50; full val split, unseen by training"
+
+- dataset:
+    id: Lekim89/sportsmot
+    task_id: val-map75
+  value: 0.8820
+  date: "2026-07-26"
+  source:
+    url: https://www.kaggle.com/code/tamobiswas/rtdetr-sportsmot-evaluation
+    name: Evaluation kernel (logs + benchmarks.json)
+  notes: "mAP@75; full val split, unseen by training"
+
+- dataset:
+    id: Lekim89/sportsmot
+    task_id: val-mar100
+  value: 0.8269
+  date: "2026-07-26"
+  source:
+    url: https://www.kaggle.com/code/tamobiswas/rtdetr-sportsmot-evaluation
+    name: Evaluation kernel (logs + benchmarks.json)
+  notes: "mAR@100; full val split, unseen by training"
