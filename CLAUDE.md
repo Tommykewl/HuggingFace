@@ -25,8 +25,12 @@ optional `smoketest.*` and, when the operation needs data staged for it, a
 `prepare-data.*`. Staging is NOT dataset creation: `data-preparation/` exists
 for models that actually produce a dataset; a model consuming an
 already-prepared dataset (like the current one) has no such stage, and its
-staging scripts live inside the operations they feed. Each model folder also
-has a `README.md` (base model, dataset, config, usage).
+staging scripts live inside the operations they feed. Each model folder's
+`README.md` IS the Hub model card, uploaded verbatim — card content only
+(frontmatter, benchmarks, usage); kernels update its marker-delimited
+benchmark sections in place, so never hand-edit inside markers. Repo-setup
+and pipeline documentation belongs in the workspace README, not the model
+README.
 
 `externals.json` (model level) lists operations DELEGATED to other services:
 entries of `{service, reference, path, used_for, notes}` pointing into

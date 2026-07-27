@@ -42,8 +42,26 @@ the model's `externals.json`. Every runnable has an adjacent
 ## Models
 
 - [`smallTech/rtdetr-sportsmot`](smallTech/rtdetr-sportsmot/) —
-  RT-DETRv2 basketball player detector, plus ByteTrack tracking inference.
-  Trains on Kaggle: [`external/kaggle/rtdetr-sportsmot/`](external/kaggle/rtdetr-sportsmot/).
+  RT-DETRv2 sports player detector (detection stage of a ByteTrack
+  tracking-by-detection pipeline). The model folder holds the Hub model card
+  (`README.md`, uploaded verbatim), `externals.json`, and the first-party
+  `inference/` stage (the repo's Colab/Kaggle `notebook.ipynb` template).
+  All other operations run on Kaggle:
+  [`external/kaggle/rtdetr-sportsmot/`](external/kaggle/rtdetr-sportsmot/).
+
+  | Stage (external/kaggle) | Runnables |
+  |---|---|
+  | `training/` | `prepare-data` (stages the train split in-network, CPU) · `smoketest` · `index` (the T4 trainer — pushes model + card to the Hub with reload verification) |
+  | `evaluation/` | `prepare-data` (stages the unseen val split) · `smoketest` · `index` (accuracy benchmark: mAP/mAR + latency; publishes its card section) |
+  | `testing/` | `prepare-data-1`/`-2` (full test split as two disjoint halves — 20 GB output cap) · `smoketest` · `index` (batched-fp16 performance benchmark; publishes its card section) |
+
+  Run any stage end-to-end (staging first, then smoketest, then index):
+
+  ```bash
+  ./run.sh smallTech/rtdetr-sportsmot/training/prepare-data     # then training/smoketest, training/index
+  ./run.sh smallTech/rtdetr-sportsmot/evaluation/prepare-data   # then evaluation/smoketest, evaluation/index
+  ./run.sh smallTech/rtdetr-sportsmot/testing/prepare-data-1    # + prepare-data-2, then testing/smoketest, testing/index
+  ```
 
 ## Setup
 
