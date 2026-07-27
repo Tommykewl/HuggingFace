@@ -9,9 +9,9 @@ side effects at import time. run.py imports the module dynamically, finds the
 BaseService subclass, instantiates it with the workspace root, and calls its
 methods in-process (no subprocess).
 
-Public API (all concrete here, so the login guard cannot be bypassed —
-each one calls require_login() and then delegates to the service's
-protected _implementation):
+Public API (all concrete here, so the login flow cannot be bypassed — each
+one logs in first and then delegates to the service's protected
+_implementation):
 
   * run(script, model, type_, name) -> run_id
         Execute the resolved runnable and return a unique run id usable with
@@ -26,22 +26,24 @@ protected _implementation):
   * list_datasets() -> list[str]
         The current user's datasets on the service, as reference strings.
 
-Authentication:
+Authentication — every public method calls login() first. login() is
+service-specific and therefore abstract here (each SDK names and consumes
+credentials differently), but every implementation follows one rule:
+credentials are MANDATED as environment variables from the workspace .env
+(template: .env.example, loaded by run.py at startup). Return only when the
+environment holds usable credentials; sys.exit naming the missing
+variable(s) otherwise. No interactive prompts, no other login routes.
 
-  * login(token=None)
-        The ONLY method that runs without being logged in. With a token,
-        authenticates non-interactively; without one, starts the service's
-        interactive flow.
-  * is_logged_in() -> bool
-        Cheap credential check used by the guard (and callable directly).
+Services implement:
 
-Shared helpers:
+  * login() — as above.
+  * is_logged_in() -> bool — cheap credential check.
+
+Shared helper:
 
   * load_config(script, name)
         The runnable's adjacent <name>.config.json — the SINGLE source of run
         options (services must not assume values or read options elsewhere).
-  * require_login()
-        sys.exit()s with a service-specific hint when not logged in.
 """
 
 import json
@@ -56,44 +58,42 @@ class BaseService(ABC):
     def __init__(self, root):
         self.root = Path(root)
 
-    # -- public API (concrete: guard first, then delegate) -------------------
+    # -- public API (concrete: log in first, then delegate) ------------------
     def run(self, script: Path, model: str, type_: str, name: str) -> str:
         """Execute the resolved runnable; returns a unique run id."""
-        self.require_login()
+        self.login()
         return self._run(script, model, type_, name)
 
     def get_status(self, run_id: str) -> str:
         """Status of the run identified by run_id (as returned by run())."""
-        self.require_login()
+        self.login()
         return self._get_status(run_id)
 
     def list_runs(self) -> list:
         """The current user's runs: [{"id", "title", "status"}, ...]."""
-        self.require_login()
+        self.login()
         return self._list_runs()
 
     def list_datasets(self) -> list:
         """The current user's datasets on the service, as reference strings."""
-        self.require_login()
+        self.login()
         return self._list_datasets()
 
     # -- authentication ------------------------------------------------------
     @abstractmethod
-    def login(self, token=None) -> None:
-        """Authenticate: with `token` non-interactively, else interactively.
+    def login(self) -> None:
+        """Authenticate from environment variables — the only login route.
 
-        The only operation allowed while logged out.
+        Called by every public method before doing anything else. An
+        implementation must mandate its credentials as env vars (the
+        workspace .env is loaded by run.py at startup), return only when
+        they authenticate, and sys.exit naming the missing variable(s)
+        otherwise. No interactive prompts or other fallbacks.
         """
 
     @abstractmethod
     def is_logged_in(self) -> bool:
         """True when usable credentials are present."""
-
-    def require_login(self) -> None:
-        """Exit with a clear hint unless the user is logged in."""
-        if not self.is_logged_in():
-            sys.exit(f"{type(self).__name__}: not logged in — call login() "
-                     "first (pass a token, or no argument for the interactive flow)")
 
     # -- service implementations (guarded by the public wrappers above) ------
     @abstractmethod

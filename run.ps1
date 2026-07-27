@@ -6,14 +6,14 @@
 #   .\run.ps1 <namespace>/<model>/<type>/<script_name>
 #
 #   <namespace>    Hugging Face namespace, e.g. smallTech
-#   <model>        model folder = Hub repo id, e.g. rtdetrv2-r50vd-sportsmot-players
-#   <type>         one of: data-preparation | trainingandevaluation | inferenceandtesting
+#   <model>        model folder = Hub repo id, e.g. rtdetr-sportsmot
+#   <type>         one of: data-preparation | training | evaluation | testing
 #   <script_name>  runnable's base name, e.g. train, smoketest, prepare-data
 #
 # Examples:
-#   .\run.ps1 smallTech/rtdetrv2-r50vd-sportsmot-players/data-preparation/prepare-data
-#   .\run.ps1 smallTech/rtdetrv2-r50vd-sportsmot-players/trainingandevaluation/smoketest
-#   .\run.ps1 smallTech/rtdetrv2-r50vd-sportsmot-players/trainingandevaluation/train
+#   .\run.ps1 smallTech/rtdetr-sportsmot/training/prepare-data
+#   .\run.ps1 smallTech/rtdetr-sportsmot/training/smoketest
+#   .\run.ps1 smallTech/rtdetr-sportsmot/training/index
 #
 # This PowerShell wrapper performs ONLY step 1 (prerequisite checks +
 # environment setup) and then delegates to run.py, which hosts the remaining
@@ -35,7 +35,7 @@ param([string]$Target = "")
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Types = @("data-preparation", "trainingandevaluation", "inferenceandtesting")
+$Types = @("data-preparation", "training", "evaluation", "testing")
 
 # Python launcher name differs across platforms; resolve it once.
 function Get-Python {

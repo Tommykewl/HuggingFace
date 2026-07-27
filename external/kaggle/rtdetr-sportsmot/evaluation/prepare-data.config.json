@@ -1,0 +1,25 @@
+{
+  "runner": "kaggle-kernel",
+  "slug": null,
+  "kernel_metadata": {
+    "language": "python",
+    "kernel_type": "notebook",
+    "is_private": true,
+    "enable_gpu": false,
+    "enable_internet": true,
+    "dataset_sources": [
+      "external-secrets"
+    ],
+    "kernel_sources": [],
+    "competition_sources": [],
+    "model_sources": []
+  },
+  "notes": [
+    "CPU-only on purpose (enable_gpu=false): downloading data must not burn GPU quota.",
+    "slug=null -> the kaggle service runner derives the kernel name from the <type>-<name> convention. Kernels live in a Kaggle collection named after the model (maintained in the UI \u2014 the API has no collections endpoint).",
+    "To resume a PARTIAL run, add this same slug to kernel_sources so the previous version's tar is mounted; the notebook auto-detects it and downloads only the remainder.",
+    "external-secrets provides HF_TOKEN for higher Hub rate limits (works without it too).",
+    "Stages the val/ split: unseen by training (which used only train/), and annotated \u2014 unlike test/, which has no ground truth."
+  ],
+  "timeout_seconds": null
+}

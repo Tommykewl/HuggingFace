@@ -8,29 +8,44 @@ Implements the full BaseService contract:
   get_status(id)  -> kernels_status: QUEUED / RUNNING / COMPLETE / ERROR ...
   list_runs()     -> kernels_list(mine=True)
   list_datasets() -> dataset_list(mine=True)
-  login(token)    -> stores the access token in ~/.kaggle/access_token
-                     (token-based; interactive mode prompts for one — Kaggle
-                     has no in-library browser flow); the other methods are
-                     guarded by BaseService.require_login().
+  login()         -> mandates Kaggle credentials in the environment
+                     (workspace .env, loaded at startup) — the only login
+                     route. Either credential kind works: KAGGLE_TOKEN (an
+                     access token, stored to ~/.kaggle/access_token for the
+                     library) or KAGGLE_USERNAME/KAGGLE_KEY (read natively
+                     by the library).
 
-Given a resolved notebook (e.g. external/kaggle/<ref>/trainingandevaluation/
-train.kaggle.ipynb), run():
+The kaggle library (not kagglehub) is used deliberately: kagglehub has no
+kernel push/status/list and no dataset-existence check — only auth,
+dataset/model download+upload, and notebook-output download.
+
+Given a resolved notebook (e.g. external/kaggle/<ref>/training/
+index.kaggle.ipynb), run():
 
   1. authenticates via the kaggle library (~/.kaggle/kaggle.json or
      ~/.kaggle/access_token) and reads the username;
-  2. loads the notebook's adjacent <name>.config.json (kernel options:
+  2. _setup(): ensures the private external-secrets dataset exists on the
+     account — if missing, it is created from the HF_TOKEN environment
+     variable (loaded from .env by run.py at startup) and uploaded as a
+     `secrets` file of KEY=VALUE lines;
+  3. loads the notebook's adjacent <name>.config.json (kernel options:
      language, kernel_type, is_private, enable_gpu, machine_shape,
      enable_internet, dataset_sources, kernel_sources, optional pinned slug,
      top-level timeout_seconds);
-  3. builds kernel-metadata.json purely from the config — bare dataset/kernel
-     slugs get the username prefixed, and the kernel slug is: config "slug" >
-     model name (for train) > <model>-<name>. Nothing is injected that the
-     config does not declare (a warning is printed if no external-secrets
-     dataset is listed, since the notebook then cannot read HF_TOKEN);
-  4. verifies every mount BEFORE pushing (each dataset must exist, each source
+  4. builds kernel-metadata.json purely from the config — bare dataset/kernel
+     slugs get the username prefixed, and the kernel slug follows the naming
+     convention: config "slug" override > derived "<type>-<name>" (e.g.
+     training-index, evaluation-prepare-data), max 50 chars
+     (Kaggle rejects longer with a bare 400). On Kaggle the kernels are
+     grouped in a collection named after the model — maintained manually in
+     the UI, since the kaggle API has no collections endpoint. Nothing is
+     injected that the config does not declare (a warning is printed if no
+     external-secrets dataset is listed, since the notebook then cannot read
+     HF_TOKEN);
+  5. verifies every mount BEFORE pushing (each dataset must exist, each source
      kernel must be COMPLETE — its output is the staged data), so a missing
      mount can never burn GPU time;
-  5. pushes the kernel, which queues the run, and prints how to monitor it.
+  6. pushes the kernel, which queues the run, and prints how to monitor it.
 
 Why the checks are strict: runs here cost real GPU quota. A push that would
 start without its data mount would silently fall back to a many-small-files
@@ -45,6 +60,7 @@ Background on the pinned options (see also the config.json notes):
 """
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -61,28 +77,25 @@ class KaggleService(BaseService):
     _api_cache = None                      # (api, user) after first successful auth
 
     # -- authentication -----------------------------------------------------
-    def login(self, token=None) -> None:
-        """Store a Kaggle access token (KGAT_...) in ~/.kaggle/access_token.
-
-        With `token`, non-interactive; without, prompts for one (create it at
-        https://www.kaggle.com/settings — the kaggle library has no in-library
-        browser flow). kaggle.json credentials, if already present, also work.
+    def login(self) -> None:
+        """Kaggle credentials in the environment (.env) are the only login
+        route: KAGGLE_TOKEN (an access token — stored to
+        ~/.kaggle/access_token, where the library reads it) or
+        KAGGLE_USERNAME/KAGGLE_KEY (read natively by the library). A bad
+        credential fails in _api() with the library's error.
         """
-        if not token:
-            token = input("Paste your Kaggle access token "
-                          "(https://www.kaggle.com/settings): ").strip()
-        if not token:
-            sys.exit("No token provided — login aborted")
-        cred_dir = Path.home() / ".kaggle"
-        cred_dir.mkdir(mode=0o700, exist_ok=True)
-        cred_file = cred_dir / "access_token"
-        cred_file.write_text(token.strip() + "\n")
-        cred_file.chmod(0o600)
-        type(self)._api_cache = None       # force re-auth with the new token
-        if not self.is_logged_in():
-            sys.exit("Login failed — the token was stored but authentication "
-                     "still fails; check the token and try again")
-        print(f"Logged in to Kaggle as {self._api()[1]} (token in {cred_file})")
+        token = os.environ.get("KAGGLE_TOKEN")
+        if not token and not (os.environ.get("KAGGLE_USERNAME")
+                              and os.environ.get("KAGGLE_KEY")):
+            sys.exit("KaggleService: no Kaggle credentials — set KAGGLE_TOKEN "
+                     "or KAGGLE_USERNAME/KAGGLE_KEY in .env "
+                     "(template: .env.example)")
+        if token and not self.is_logged_in():
+            cred_file = Path.home() / ".kaggle" / "access_token"
+            cred_file.parent.mkdir(mode=0o700, exist_ok=True)
+            cred_file.write_text(token.strip() + "\n")
+            cred_file.chmod(0o600)
+            type(self)._api_cache = None   # re-auth with the new token
 
     def is_logged_in(self) -> bool:
         """True when the kaggle library can authenticate with stored creds."""
@@ -93,11 +106,12 @@ class KaggleService(BaseService):
 
     # -- service entry point (guarded by BaseService.run) ---------------------
     def _run(self, script: Path, model: str, type_: str, name: str) -> str:
+        self._setup()
         config = self.load_config(script, name)
         model_name = model.split("/", 1)[1]
 
         api, user = self._api()
-        meta = self._build_metadata(config, user, model_name, name)
+        meta = self._build_metadata(config, user, model_name, type_, name)
         print(f"kernel: {meta['id']}   gpu={meta['enable_gpu']}"
               + (f" ({meta['machine_shape']})" if meta.get("machine_shape") else ""))
         print(f"dataset_sources: {meta['dataset_sources']}")
@@ -144,6 +158,40 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
         return [str(d.ref) for d in datasets if d]
 
     # -- helpers ------------------------------------------------------------
+    def _setup(self) -> None:
+        """Ensure the private external-secrets dataset exists on the account.
+
+        Training kernels read HF_TOKEN from it (Kaggle Secrets are dropped on
+        every push; dataset mounts persist). When it is missing, it is created
+        here from the HF_TOKEN environment variable — loaded from .env by
+        run.py at startup — as a `secrets` file of KEY=VALUE lines, uploaded
+        private. Idempotent: a no-op when the dataset already exists.
+        """
+        api, user = self._api()
+        ref = f"{user}/{SECRETS_SLUG}"
+        try:
+            api.dataset_status(ref)        # raises when the dataset doesn't exist
+            return
+        except Exception:
+            pass
+        hf_token = os.environ.get("HF_TOKEN")
+        if not hf_token:
+            sys.exit(f"Dataset '{ref}' does not exist and HF_TOKEN is not set, "
+                     "so it cannot be created — set HF_TOKEN in .env "
+                     "(template: .env.example)")
+        print(f"Dataset {ref} not found — creating it (private) from HF_TOKEN...")
+        with tempfile.TemporaryDirectory() as stage:
+            (Path(stage) / "secrets").write_text(f"HF_TOKEN={hf_token}\n")
+            with open(Path(stage) / "dataset-metadata.json", "w") as fh:
+                json.dump({"title": SECRETS_SLUG, "id": ref,
+                           "licenses": [{"name": "CC0-1.0"}]}, fh)
+            result = api.dataset_create_new(folder=stage, public=False)
+        error = getattr(result, "error", None)
+        if error:
+            sys.exit(f"Could not create dataset {ref}: {error}")
+        print(f"Created private dataset {ref} (a 'secrets' file of KEY=VALUE "
+              "lines — add more keys on Kaggle directly as needed).")
+
     @classmethod
     def _api(cls):
         """An authenticated KaggleApi instance and the account's username."""
@@ -168,14 +216,31 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
         return cls._api_cache
 
     @staticmethod
-    def _build_metadata(config: dict, user: str, model_name: str, name: str) -> dict:
-        """Turn a notebook's config.json into Kaggle kernel-metadata.json."""
+    def _build_metadata(config: dict, user: str, model_name: str, type_: str,
+                        name: str) -> dict:
+        """Turn a notebook's config.json into Kaggle kernel-metadata.json.
+
+        Kernel naming convention: the stage's main runnable (index) becomes
+        "<model>-<type>" (e.g. rtdetr-sportsmot-training); every other
+        runnable becomes "<model>-<type>-<name>" (e.g.
+        rtdetr-sportsmot-training-prepare-data). Overridable per config via
+        "slug" — needed when the derived name would exceed Kaggle's
+        50-character slug limit. Kernels are grouped in a Kaggle collection
+        named after the model, maintained manually in the UI (the kaggle API
+        has no collections endpoint).
+        """
         km = config.get("kernel_metadata", {})
 
         def qualify(refs):
             return [r if "/" in r else f"{user}/{r}" for r in refs]
 
-        slug = config.get("slug") or (model_name if name == "train" else f"{model_name}-{name}")
+        slug = config.get("slug") or (
+            f"{model_name}-{type_}" if name == "index"
+            else f"{model_name}-{type_}-{name}")
+        if len(slug) > 50:
+            sys.exit(f"Kernel slug '{slug}' is {len(slug)} chars — Kaggle "
+                     "rejects slugs over 50 with a bare 400. Pin a shorter "
+                     "'slug' in the config.")
         datasets = qualify(km.get("dataset_sources", []))
         if not any(d.endswith(f"/{SECRETS_SLUG}") for d in datasets):
             # Not auto-added: the config is the single source of truth for mounts.
@@ -221,8 +286,8 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
             if "COMPLETE" not in status:
                 sys.exit(f"Kernel '{ref}' (from the config) is not COMPLETE "
                          f"(status: {status}).\n"
-                         f"Its output is the staged data — run its prepare-data first, e.g.: "
-                         f"./run.sh {model}/data-preparation/prepare-data")
+                         f"Its output is the staged data — run its prepare-data staging script first, e.g.: "
+                         f"./run.sh {model}/<type>/prepare-data")
 
     @staticmethod
     def _push(api, notebook: Path, meta: dict, timeout_seconds=None) -> str:

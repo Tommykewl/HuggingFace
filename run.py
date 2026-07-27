@@ -27,14 +27,21 @@ Steps hosted here, one function each:
 import importlib.util
 import inspect
 import json
+import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))          # so service modules can import baseservice
-TYPES = ("data-preparation", "trainingandevaluation", "inferenceandtesting")
+TYPES = ("data-preparation", "training", "evaluation", "testing")
 
+from dotenv import load_dotenv         # noqa: E402
 from baseservice import BaseService    # noqa: E402  (needs ROOT on sys.path)
+
+# The workspace .env (template: .env.example) — credentials the services'
+# login flows resolve from the environment. Loaded once here at startup;
+# run.py is invoked from the workspace root, where .env lives.
+load_dotenv()
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +53,7 @@ def ask_target(argv):
     if not target:
         target = input(
             "Enter <namespace>/<model>/<type>/<script_name> "
-            "(e.g. smallTech/rtdetrv2-r50vd-sportsmot-players/trainingandevaluation/train): "
+            "(e.g. smallTech/rtdetr-sportsmot/training/index): "
         ).strip()
     parts = target.split("/")
     if len(parts) != 4 or not all(parts):
@@ -146,7 +153,8 @@ class HuggingFaceService(BaseService):
       get_status(id)  -> inspect_job(job_id): the job's stage
       list_runs()     -> list_jobs() for the current user
       list_datasets() -> list_datasets(author=<current user>)
-      login(token)    -> huggingface_hub.login (interactive when no token)
+      login()         -> mandates HF_TOKEN in the environment (workspace
+                         .env, loaded at startup) — the only login route
     """
 
     @staticmethod
@@ -161,14 +169,15 @@ class HuggingFaceService(BaseService):
         return huggingface_hub
 
     # -- authentication -----------------------------------------------------
-    def login(self, token=None) -> None:
-        """huggingface_hub.login: with a token non-interactively, else the
-        library's interactive prompt (paste a token from
-        https://huggingface.co/settings/tokens)."""
-        hub = self._hub()
-        hub.login(token=token) if token else hub.login()
-        who = hub.HfApi().whoami()
-        print(f"Logged in to Hugging Face as {who.get('name')}")
+    def login(self) -> None:
+        """HF_TOKEN in the environment (.env) is the only login route.
+
+        huggingface_hub reads HF_TOKEN natively on every API call — nothing
+        to store here; a bad token fails at the first call.
+        """
+        if not os.environ.get("HF_TOKEN"):
+            sys.exit("HuggingFaceService: HF_TOKEN not set — put it in .env "
+                     "(template: .env.example)")
 
     def is_logged_in(self) -> bool:
         """True when a stored/env HF token exists."""

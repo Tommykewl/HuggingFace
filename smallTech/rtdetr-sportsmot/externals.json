@@ -1,0 +1,15 @@
+{
+  "externals": [
+    {
+      "service": "kaggle",
+      "reference": "rtdetr-sportsmot",
+      "path": "external/kaggle/rtdetr-sportsmot",
+      "used_for": [
+        "training",
+        "evaluation",
+        "testing"
+      ],
+      "notes": "Free-tier route for ALL operations of this model. training: T4 kernels (index + smoketest) train from the staged train tar and push the model to the Hub. evaluation: T4 kernels benchmark the Hub model on the staged, unseen val split and publish the results to the model card. testing: T4 kernels measure runtime performance on a staged half of the test split (no public ground truth, so no accuracy metrics) and publish those to the model card too. Each stage stages its own data via a CPU prepare-data kernel \u2014 the dataset itself is already prepared on the Hub (Lekim89/sportsmot), so no data-preparation stage is delegated. Launched via the workspace run.sh / run.ps1 launcher, which resolves this reference."
+    }
+  ]
+}

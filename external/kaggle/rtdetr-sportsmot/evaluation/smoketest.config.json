@@ -1,0 +1,25 @@
+{
+  "runner": "kaggle-kernel",
+  "slug": null,
+  "kernel_metadata": {
+    "language": "python",
+    "kernel_type": "notebook",
+    "is_private": true,
+    "enable_gpu": true,
+    "machine_shape": "NvidiaTeslaT4",
+    "enable_internet": true,
+    "dataset_sources": [
+      "external-secrets"
+    ],
+    "kernel_sources": [
+      "rtdetr-sportsmot-evaluation-prepare-data"
+    ],
+    "competition_sources": [],
+    "model_sources": []
+  },
+  "notes": [
+    "Identical mounts to index.config.json on purpose: the smoke test's job is to validate, in a few minutes, exactly the environment the full benchmark will see (GPU/torch, deps, HF token, val-tar mount + extraction, gt parsing, model download, a mini eval).",
+    "slug=null -> the kaggle service runner derives the kernel name from the <type>-<name> convention. Kernels live in a Kaggle collection named after the model (maintained in the UI \u2014 the API has no collections endpoint)."
+  ],
+  "timeout_seconds": null
+}

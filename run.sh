@@ -8,14 +8,14 @@
 #   ./run.sh <namespace>/<model>/<type>/<script_name>
 #
 #   <namespace>    Hugging Face namespace, e.g. smallTech
-#   <model>        model folder = Hub repo id, e.g. rtdetrv2-r50vd-sportsmot-players
-#   <type>         one of: data-preparation | trainingandevaluation | inferenceandtesting
+#   <model>        model folder = Hub repo id, e.g. rtdetr-sportsmot
+#   <type>         one of: data-preparation | training | evaluation | testing
 #   <script_name>  runnable's base name, e.g. train, smoketest, prepare-data
 #
 # Examples:
-#   ./run.sh smallTech/rtdetrv2-r50vd-sportsmot-players/data-preparation/prepare-data
-#   ./run.sh smallTech/rtdetrv2-r50vd-sportsmot-players/trainingandevaluation/smoketest
-#   ./run.sh smallTech/rtdetrv2-r50vd-sportsmot-players/trainingandevaluation/train
+#   ./run.sh smallTech/rtdetr-sportsmot/training/prepare-data
+#   ./run.sh smallTech/rtdetr-sportsmot/training/smoketest
+#   ./run.sh smallTech/rtdetr-sportsmot/training/index
 #
 # This shell wrapper performs ONLY step 1 (prerequisite checks + environment
 # setup) and then delegates to run.py, which hosts the remaining steps:
@@ -34,7 +34,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-TYPES="data-preparation trainingandevaluation inferenceandtesting"
+TYPES="data-preparation training evaluation testing"
 
 # ---------------------------------------------------------------------------
 # Step 1 — verify prerequisites.

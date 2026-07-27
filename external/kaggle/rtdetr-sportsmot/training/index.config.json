@@ -12,25 +12,25 @@
       "external-secrets"
     ],
     "kernel_sources": [
-      "sportsmot-train-download"
+      "rtdetr-sportsmot-training-prepare-data"
     ],
     "competition_sources": [],
     "model_sources": []
   },
   "notes": [
-    "slug=null lets the kaggle service runner (external/kaggle/service.py) derive the kernel slug: the model name for train, <model>-<notebook> otherwise. Set it to pin an explicit slug.",
     "Bare dataset/kernel slugs get the authenticated Kaggle username prefixed by the kaggle service runner (external/kaggle/service.py).",
-    "kernel_sources mounts the sportsmot-train-download kernel's OUTPUT (sportsmot-train.tar, the pre-staged training data); the launcher refuses to push while that kernel is not COMPLETE.",
-    "external-secrets (listed in dataset_sources) carries HF_TOKEN — Kaggle Secrets are dropped on CLI pushes while dataset references survive. The runner warns if no external-secrets dataset is listed."
+    "slug=null -> the kaggle service runner derives the kernel name from the <type>-<name> convention. Kernels live in a Kaggle collection named after the model (maintained in the UI \u2014 the API has no collections endpoint).",
+    "kernel_sources mounts the rtdetr-sportsmot-training-prepare-data kernel's OUTPUT (sportsmot-train.tar, the pre-staged training data); the launcher refuses to push while that kernel is not COMPLETE.",
+    "external-secrets (listed in dataset_sources) carries HF_TOKEN \u2014 Kaggle Secrets are dropped on CLI pushes while dataset references survive. The runner warns if no external-secrets dataset is listed."
   ],
   "available_options_reference": {
     "machine_shape": [
       "NvidiaTeslaT4",
-      "NvidiaTeslaP100 — UNUSABLE: Kaggle's torch ships no sm_60 kernels ('no kernel image is available for execution on the device')"
+      "NvidiaTeslaP100 \u2014 UNUSABLE: Kaggle's torch ships no sm_60 kernels ('no kernel image is available for execution on the device')"
     ],
-    "enable_gpu": "bool — with no machine_shape the API assigns the default GPU, the unusable P100; always pin machine_shape for GPU runs",
+    "enable_gpu": "bool \u2014 with no machine_shape the API assigns the default GPU, the unusable P100; always pin machine_shape for GPU runs",
     "enable_tpu": "bool",
-    "enable_internet": "bool — needed to reach the Hugging Face Hub",
+    "enable_internet": "bool \u2014 needed to reach the Hugging Face Hub",
     "dataset_sources": "list of <owner>/<dataset-slug> mounted under /kaggle/input",
     "kernel_sources": "list of <owner>/<kernel-slug> whose OUTPUT files are mounted under /kaggle/input",
     "competition_sources": "list of competition slugs",
@@ -38,7 +38,7 @@
     "timeout": "kaggle kernels push -t <seconds> caps the run length",
     "language": "kernel language (python)",
     "kernel_type": "notebook | script",
-    "is_private": "bool — private kernels are the workspace default",
+    "is_private": "bool \u2014 private kernels are the workspace default",
     "timeout_seconds": "top-level; caps the run length (kernels_push timeout); null -> Kaggle default"
   },
   "timeout_seconds": null

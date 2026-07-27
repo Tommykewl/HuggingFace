@@ -1,6 +1,6 @@
 {
   "runner": "kaggle-kernel",
-  "slug": "sportsmot-train-download",
+  "slug": null,
   "kernel_metadata": {
     "language": "python",
     "kernel_type": "notebook",
@@ -15,8 +15,8 @@
     "model_sources": []
   },
   "notes": [
-    "slug is PINNED to sportsmot-train-download: that kernel already exists with a COMPLETE run whose output (sportsmot-train.tar, 6.64 GB) the training configs reference via kernel_sources — re-pushing under this slug versions the same kernel instead of orphaning the staged data.",
     "CPU-only on purpose (enable_gpu=false): downloading data must not burn GPU quota.",
+    "slug=null -> the kaggle service runner derives the kernel name from the <type>-<name> convention. Kernels live in a Kaggle collection named after the model (maintained in the UI \u2014 the API has no collections endpoint).",
     "To resume a PARTIAL run, add this same slug to kernel_sources so the previous version's tar is mounted; the notebook auto-detects it and downloads only the remainder.",
     "external-secrets provides HF_TOKEN for higher Hub rate limits (works without it too)."
   ],

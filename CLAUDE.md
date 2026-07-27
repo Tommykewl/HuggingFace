@@ -2,118 +2,93 @@
 
 ## Non-negotiable rule
 
-Before executing any plan (a series of scripts and operations), get the plan
-reviewed by the user. This is a data-pipeline and model-training project: script
-runs consume GPU quota and spawn long-running processes — true financial costs,
-unlike ordinary application development. Autonomy covers only small mechanical
-steps inside a user-approved plan (create a folder, run a single command, retry
-a flaky operation); it never covers deciding or changing the plan itself. If an
-approved approach turns out to be infeasible, STOP and present the alternatives
-with their tradeoffs — do not build a replacement strategy unprompted.
+Get every plan (any series of scripts and operations) reviewed by the user
+before executing it — runs here consume GPU quota and real money. Autonomy
+covers only small mechanical steps inside an approved plan (create a folder,
+run a single command, retry a flaky operation), never deciding or changing the
+plan. If an approved approach proves infeasible, STOP and present the
+alternatives with tradeoffs — do not build a replacement strategy unprompted.
 
-Holds only developer-authored artifacts. No system files (`HF_HOME`, caches,
-tokens) — those stay in `~/.cache/huggingface`. Trained models go to the Hub, not
-here. Temp data (dataset snapshots, sample frames, metadata) goes in the session
-scratchpad and is deleted once used.
+The repo holds only developer-authored artifacts: no system files, caches, or
+tokens (those stay in `~/.cache/huggingface`); no trained weights (those go to
+the Hub). Temp data goes in the session scratchpad and is deleted once used.
 
-## Model folders
+## Layout
 
-Path = Hub repo id: `<namespace>/<model>/` (e.g. `smallTech/rtdetrv2-...`).
-Stages are subfolders that exist only when actually used; each runnable sits
-next to a `<name>.config.json` that declares how it runs:
+Model folder path = Hub repo id: `<namespace>/<model>/` (e.g.
+`smallTech/rtdetr-sportsmot`). Stage subfolders — `data-preparation/`,
+`training/`, `evaluation/`, `testing/`, … — exist only when actually exercised (no
+runnables kept "for later"); each runnable sits next to a
+`<name>.config.json`, the single source of its run options. A stage's main
+runnable is named `index.*` — the folder itself names the operation — plus an
+optional `smoketest.*` and, when the operation needs data staged for it, a
+`prepare-data.*`. Staging is NOT dataset creation: `data-preparation/` exists
+for models that actually produce a dataset; a model consuming an
+already-prepared dataset (like the current one) has no such stage, and its
+staging scripts live inside the operations they feed. Each model folder also
+has a `README.md` (base model, dataset, config, usage).
 
-- `data-preparation/` — (when used) `prepare-data.py` + `prepare-data.config.json`
-  (Hugging Face Job for data prep).
-- `trainingandevaluation/` — (when used) `train.py` (HF Jobs trainer, uv
-  script) + `train.config.json` (hf jobs options: flavor, timeout, secrets, …).
-- `inferenceandtesting/` — `inference.py` + `inference.config.json` (carries
-  the full `hf jobs uv run` option list collated as a reference).
-- `README.md` — base model, dataset, config, usage.
-- `externals.json` — operations this model DELEGATES to external services:
-  entries of `{service, reference, path, used_for, notes}` pointing into
-  `external/`. Delegated operations only — resources merely consumed (datasets,
-  kernel outputs, Hub artifacts) belong in the runnable's config.json, never
-  here. Orchestration tooling resolves references from this file.
+`externals.json` (model level) lists operations DELEGATED to other services:
+entries of `{service, reference, path, used_for, notes}` pointing into
+`external/`. Resources merely consumed — datasets, kernel outputs, Hub
+artifacts — belong in the runnable's config.json, never here. Orchestration
+tooling resolves references from this file.
 
-Do not keep unused runnables around "for later" — a stage folder appears when
-its script is actually exercised (e.g. the current model trains only on Kaggle,
-so it has no HF-Jobs train.py).
-
-## external/ folders
-
-`external/<service>/<reference_canonical_name>/` holds everything that runs on
-another service (`kaggle`, `local`, …), mirroring the same stage layout:
-
-- `data-preparation/`, `trainingandevaluation/`, `inferenceandtesting/` — each
-  runnable + its `<name>.config.json`. For Kaggle notebooks the config declares
-  kernel metadata (`enable_gpu`, `machine_shape`, `enable_internet`,
-  `dataset_sources`, `kernel_sources`, optional pinned `slug`) which the
-  kaggle service runner (`external/kaggle/service.py`) turns into
-  kernel-metadata.json (bare slugs get the Kaggle username prefixed).
-- `externals.json` — ONLY if this external delegates an operation to yet
-  another external. Same delegated-operations-only semantics as the model-level
-  file: consuming a resource (a mounted dataset, a kernel output, the Hub) is
-  NOT delegation, so the current Kaggle external — which delegates nothing —
-  has no externals.json at all.
-
-Current example: `external/kaggle/rtdetrv2-r50vd-sportsmot-players/` (T4
-training + smoketest + CPU data staging).
+`external/<service>/<reference>/` mirrors the same stage layout for anything
+that runs on another service (`kaggle`, `local`, …). An external gets its own
+externals.json only if it delegates further; the current Kaggle external
+delegates nothing, so it has none.
 
 All scripts must be self-explanatory via comments.
 
 ## Conventions
 
-- Python runnables are self-contained uv scripts (PEP 723); HF Jobs ones run
-  with `hf jobs uv run <path>` using the options in the adjacent config.json.
-- Launcher: `./run.sh <namespace>/<model>/<type>/<script_name>` (Linux/macOS;
-  Windows: `.\run.ps1`). The shell wrappers do ONLY step 1 — prerequisite
-  checks (git, python), installing uv globally if missing, and `uv sync`ing
-  the workspace pyproject.toml (huggingface_hub + kaggle libraries) — then
-  delegate to `run.py` inside that environment, which hosts step 2 (target
-  from argv or prompt), step 3 (resolve: model folder first, then externals
-  from externals.json — error on none-found or ambiguity) and step 4 (run).
-  The hf/kaggle CLIs are never prerequisites: they are wrappers around the
-  libraries pyproject.toml provides.
-- Every service runner is a class implementing the BaseService interface
-  (root `baseservice.py`): `run(...) -> run_id` (Kaggle `<user>/<kernel-slug>`,
-  HF job id), `get_status(run_id)`, `list_runs()`, `list_datasets()`,
-  `login(token=None)` (token or interactive), `is_logged_in()`. The base class
-  guards every method except login with a login check (template methods:
-  public concrete wrappers delegate to protected `_impl`s), plus a shared
-  `load_config`. External services ship exactly one
-  `external/<service>/service.py` defining a single BaseService subclass —
-  class only: no main(), no argparse, no import-time side effects. run.py
-  imports it dynamically and calls run() in-process (never a subprocess).
-- Runners call service Python libraries directly — the hf and kaggle CLIs are
-  wrappers around huggingface_hub and kaggle, so no subprocessing CLIs. The
-  Hugging Face Jobs runner (default for first-party model-folder scripts) is
-  the built-in HuggingFaceService in `run.py` (HfApi.run_uv_job with the
-  config.json options) — no service.py exists for huggingface.
-- Kaggle runner (KaggleService in `external/kaggle/service.py`): uses the
-  kaggle library (KaggleApi) to build kernel metadata from the notebook's
-  config.json. Kernel slugs: `train` keeps the model name;
-  others get `<model>-<name>`; a config `slug` field overrides (used to pin
-  the existing staging kernel). It verifies every dataset source exists and
-  every kernel source is COMPLETE before pushing — never spend GPU time to
-  discover a missing mount.
-- Kaggle HF token comes from a private Kaggle dataset `external-secrets` (a
-  `secrets` file of `KEY=VALUE` lines), listed in every kernel config's
-  `dataset_sources` — the runner injects nothing and warns if it is missing
-  from a config. Datasets
-  mount at `/kaggle/input/datasets/<owner>/<slug>/`, kernel outputs at
-  `/kaggle/input/notebooks/<owner>/<slug>/` (layout has changed before, so
-  notebooks scan `/kaggle/input` instead of hard-coding paths). Maintained on
-  Kaggle directly. (Kaggle Secrets are unusable — dropped on each CLI push.)
-- Kaggle kernel configs must pin `"machine_shape": "NvidiaTeslaT4"` for GPU
-  runs — the API default GPU is a P100 (sm_60), for which Kaggle's torch ships
-  no CUDA kernels (fails with "no kernel image is available for execution on
-  the device").
-- Training data for Kaggle runs is staged once inside Kaggle (the kaggle
-  external's CPU `prepare-data` kernel, mounted via `kernel_sources`; or a
-  Kaggle Dataset), never bulk-downloaded from the Hub during training — a
-  many-small-files Hub download once consumed an entire GPU session, and
-  residential IPs get CDN-throttled. Notebooks auto-detect staged data and
-  treat the in-session download strictly as a warned fallback.
-- Run the Kaggle `smoketest` notebook (few minutes) before any multi-hour
-  training run: it validates GPU/torch kernels, deps, Hub auth, the staged-data
-  mount, and a mock training pass on the real image.
+- Python runnables are self-contained uv scripts (PEP 723); first-party ones
+  run as Hugging Face Jobs with the options in the adjacent config.json.
+- Launcher: `./run.sh <namespace>/<model>/<type>/<script_name>` (Windows:
+  `.\run.ps1`). The wrappers only check prerequisites (git, python), install
+  uv, and `uv sync`; `run.py` resolves the target (model folder first, then
+  the model's externals.json) and runs it. Details are in their comments.
+- Every service runner is one class extending BaseService (root
+  `baseservice.py` — the docstring is the contract): exactly one
+  `external/<service>/service.py`, class only (no main, no argparse, no
+  import-time side effects), imported dynamically by run.py and run
+  in-process. Hugging Face Jobs is the built-in HuggingFaceService in run.py
+  — no service.py for huggingface.
+- Auth: run.py `load_dotenv()`s the workspace `.env` (template
+  `.env.example`) at startup; every public service method calls the
+  service's login() first, which mandates that service's credential env
+  vars (HF_TOKEN; KAGGLE_TOKEN or KAGGLE_USERNAME/KAGGLE_KEY) and exits
+  naming what's missing. Env vars are the only login route — no
+  interactive or stored-credential fallbacks.
+- Call the service Python libraries (huggingface_hub, kaggle) directly; never
+  subprocess the hf/kaggle CLIs or require them as prerequisites — they are
+  wrappers around those libraries.
+- Kaggle kernel naming: the runner derives the slug as `<type>-<name>`
+  (e.g. `training-index`); a config `slug` field overrides —
+  needed only when the derived name deviates from the kernel's actual name on
+  Kaggle or exceeds Kaggle's 50-char slug limit (the API rejects longer with
+  a bare 400, and the runner now guards this). Kernels are grouped in a
+  Kaggle collection named after the model — maintained in the UI, the kaggle
+  API has no collections endpoint. The runner verifies every dataset source
+  exists and every kernel source is COMPLETE before pushing — never spend GPU
+  time discovering a missing mount.
+- The HF token reaches Kaggle via a private Kaggle dataset `external-secrets`
+  (a `secrets` file of KEY=VALUE lines), listed in each kernel config's
+  `dataset_sources`. The Kaggle runner's `_setup()` creates it from the
+  HF_TOKEN env var when missing (extra keys are added on Kaggle directly);
+  it injects nothing into kernels and warns when a config omits the dataset.
+  Kaggle Secrets are unusable: dropped on every CLI push. Notebooks scan
+  `/kaggle/input` for mounts instead of hard-coding paths (the layout has
+  changed before).
+- GPU kernel configs must pin `"machine_shape": "NvidiaTeslaT4"` — the API
+  default GPU is a P100 (sm_60), for which Kaggle's torch ships no CUDA
+  kernels ("no kernel image is available for execution on the device").
+- Training data is staged once inside Kaggle (a CPU staging kernel
+  mounted via `kernel_sources`, or a Kaggle Dataset), never bulk-downloaded
+  from the Hub during training — that once consumed an entire GPU session,
+  and residential IPs get CDN-throttled. The in-session download is a
+  loud-warning fallback only.
+- Run the matching Kaggle smoketest notebook (a few minutes) before any long
+  training run: it validates GPU/torch kernels, deps, Hub auth, the
+  staged-data mount, and a mock training pass.

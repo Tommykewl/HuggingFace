@@ -1,0 +1,28 @@
+{
+  "runner": "kaggle-kernel",
+  "slug": null,
+  "kernel_metadata": {
+    "language": "python",
+    "kernel_type": "notebook",
+    "is_private": true,
+    "enable_gpu": true,
+    "machine_shape": "NvidiaTeslaT4",
+    "enable_internet": true,
+    "dataset_sources": [
+      "external-secrets"
+    ],
+    "kernel_sources": [
+      "rtdetr-sportsmot-evaluation-prepare-data"
+    ],
+    "competition_sources": [],
+    "model_sources": []
+  },
+  "notes": [
+    "Benchmarks the Hub model on the UNSEEN val split (training used only train/; test/ has no public ground truth). Writes benchmarks.json (overall + per-sequence mAP/mAR, latency percentiles, environment) to the kernel output and logs everything.",
+    "slug=null -> the kaggle service runner derives the kernel name from the <type>-<name> convention. Kernels live in a Kaggle collection named after the model (maintained in the UI \u2014 the API has no collections endpoint).",
+    "kernel_sources mounts the rtdetr-sportsmot-evaluation-prepare-data kernel's OUTPUT (sportsmot-val.tar, staged by evaluation/prepare-data); the launcher refuses to push while that kernel is not COMPLETE.",
+    "external-secrets provides HF_TOKEN (optional here \u2014 the model is public; only raises rate limits).",
+    "Run the sibling evaluation/smoketest first \u2014 a few minutes validating this exact environment."
+  ],
+  "timeout_seconds": null
+}
