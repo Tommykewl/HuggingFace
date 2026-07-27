@@ -107,7 +107,8 @@ The shell wrappers only verify prerequisites and set up the uv environment,
 then delegate to `run.py`, which takes the target
 `<namespace>/<model>/<type>/<script_name>` (argument or prompt), resolves the
 script — the model folder first, then every external referenced by its
-`externals.json`, erroring on zero or multiple matches — and calls the owning
+`externals.json` (only scripts declared as artifacts of that operation in
+`used_for` are eligible), erroring on zero or multiple matches — and calls the owning
 service's `run()` in-process. Services are classes implementing the
 `BaseService` interface ([baseservice.py](baseservice.py)): the built-in
 `HuggingFaceService` in `run.py` submits first-party scripts as Hugging Face

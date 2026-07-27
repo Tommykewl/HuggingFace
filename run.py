@@ -69,10 +69,21 @@ def ask_target(argv):
 # Step 3 — resolve the script.
 # Search order: the model folder's own <type>/ (first-party scripts, run as
 # Hugging Face Jobs by default), then every external referenced by the model's
-# externals.json (external/<service>/<reference>/<type>/). A runnable matches
-# when its filename starts with "<script_name>."; *.config.json files never
-# do. Exactly one match must remain.
+# externals.json. An external's used_for is a list of operation objects:
+#   {"name": "<operation>", "artifacts": [{"name": ..., "type": "script" |
+#   "result"}, ...]}
+# — an external is searched only when it declares the requested operation, and
+# a runnable found there must be declared as a 'script' artifact (single
+# source of truth: an undeclared script on disk is an error, not a fallback).
+# 'result' artifacts are operation OUTPUTS living Hub-side in the model folder
+# (<model>/<operation>/results.yaml) — never runnables. A runnable matches
+# when its filename starts with "<script_name>." and has a script extension;
+# *.config.json and data files (e.g. results.yaml) never do. Exactly one
+# match must remain.
 # ---------------------------------------------------------------------------
+RUNNABLE_SUFFIXES = (".py", ".ipynb")
+
+
 def resolve_script(ns, model_name, type_, name):
     """Return (service, script_path). service 'huggingface' == first-party."""
     model_dir = ROOT / ns / model_name
@@ -84,6 +95,7 @@ def resolve_script(ns, model_name, type_, name):
             return []
         return [p for p in sorted(directory.iterdir())
                 if p.is_file() and p.name.startswith(name + ".")
+                and p.suffix in RUNNABLE_SUFFIXES
                 and not p.name.endswith(".config.json")]
 
     candidates = [("huggingface", p) for p in runnables(model_dir / type_)]
@@ -93,7 +105,20 @@ def resolve_script(ns, model_name, type_, name):
             service, ref = entry.get("service"), entry.get("reference")
             if not service or not ref:
                 continue
+            operation = next(
+                (op for op in entry.get("used_for", [])
+                 if isinstance(op, dict) and op.get("name") == type_), None)
+            if operation is None:
+                continue               # external not used for this operation
+            declared = sorted(a.get("name") for a in operation.get("artifacts", [])
+                              if a.get("type") == "script")
             for p in runnables(ROOT / "external" / service / ref / type_):
+                if name not in declared:
+                    sys.exit(f"ERROR[undeclared-artifact]: {p.relative_to(ROOT)} "
+                             f"exists but '{name}' is not declared as a 'script' "
+                             f"artifact of the '{type_}' operation in "
+                             f"{ns}/{model_name}/externals.json — declare it "
+                             f"there or remove the file. Declared: {declared}")
                 candidates.append((service, p))
 
     if not candidates:

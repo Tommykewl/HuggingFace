@@ -5,11 +5,35 @@
       "reference": "rtdetr-sportsmot",
       "path": "external/kaggle/rtdetr-sportsmot",
       "used_for": [
-        "training",
-        "evaluation",
-        "testing"
+        {
+          "name": "training",
+          "artifacts": [
+            { "name": "prepare-data", "type": "script" },
+            { "name": "smoketest", "type": "script" },
+            { "name": "index", "type": "script" }
+          ]
+        },
+        {
+          "name": "evaluation",
+          "artifacts": [
+            { "name": "prepare-data", "type": "script" },
+            { "name": "smoketest", "type": "script" },
+            { "name": "index", "type": "script" },
+            { "name": "results", "type": "result" }
+          ]
+        },
+        {
+          "name": "testing",
+          "artifacts": [
+            { "name": "prepare-data-1", "type": "script" },
+            { "name": "prepare-data-2", "type": "script" },
+            { "name": "smoketest", "type": "script" },
+            { "name": "index", "type": "script" },
+            { "name": "results", "type": "result" }
+          ]
+        }
       ],
-      "notes": "Free-tier route for ALL operations of this model. training: T4 kernels (index + smoketest) train from the staged train tar and push the model to the Hub. evaluation: T4 kernels benchmark the Hub model on the staged, unseen val split and publish the results to the model card. testing: T4 kernels measure runtime performance on a staged half of the test split (no public ground truth, so no accuracy metrics) and publish those to the model card too. Each stage stages its own data via a CPU prepare-data kernel \u2014 the dataset itself is already prepared on the Hub (Lekim89/sportsmot), so no data-preparation stage is delegated. Launched via the workspace run.sh / run.ps1 launcher, which resolves this reference."
+      "notes": "Free-tier route for ALL operations of this model. Each used_for entry names a delegated operation and its artifacts: type 'script' = a runnable in the external's stage folder (the launcher only resolves declared scripts); type 'result' = an output produced by the operation that lives Hub-side in the MODEL folder (<model>/<operation>/results.yaml, uploaded as .eval_results/<operation>.yaml). training: T4 kernels train from the staged train tar and push model + card to the Hub. evaluation: accuracy benchmark on the staged, unseen val split; publishes its card section. testing: batched-fp16 performance benchmark over the full test split (two staged halves; no public ground truth); publishes its card section. The dataset itself is already prepared on the Hub (Lekim89/sportsmot), so no data-preparation stage is delegated. Launched via run.sh / run.ps1."
     }
   ]
 }

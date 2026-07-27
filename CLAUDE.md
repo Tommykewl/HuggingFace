@@ -34,9 +34,15 @@ README.
 
 `externals.json` (model level) lists operations DELEGATED to other services:
 entries of `{service, reference, path, used_for, notes}` pointing into
-`external/`. Resources merely consumed — datasets, kernel outputs, Hub
-artifacts — belong in the runnable's config.json, never here. Orchestration
-tooling resolves references from this file.
+`external/`. `used_for` is a list of operation objects
+`{"name": "<operation>", "artifacts": [{"name": ..., "type": "script" |
+"result"}]}` — `script` artifacts are the external's runnables (the launcher
+resolves ONLY declared scripts; an undeclared script on disk is an error),
+`result` artifacts are operation outputs living Hub-side in the model folder
+(`<model>/<operation>/results.yaml`, uploaded as
+`.eval_results/<operation>.yaml`). Resources merely consumed — datasets,
+kernel outputs, Hub artifacts — belong in the runnable's config.json, never
+here. Orchestration tooling resolves references from this file.
 
 `external/<service>/<reference>/` mirrors the same stage layout for anything
 that runs on another service (`kaggle`, `local`, …). An external gets its own

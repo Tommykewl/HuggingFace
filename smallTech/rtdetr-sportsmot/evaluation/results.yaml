@@ -1,5 +1,8 @@
 # Hugging Face eval-results format (https://huggingface.co/docs/hub/en/eval-results):
-# uploaded to the model repo as .eval_results/evaluation.yaml. Accuracy results
+# Lives in the MODEL folder (Hub-facing artifacts, like the card) and is
+# uploaded to the model repo as .eval_results/evaluation.yaml. Produced by the
+# kaggle evaluation operation — declared as a 'result' artifact in the model's
+# externals.json. Accuracy results
 # from evaluation/index.kaggle.ipynb on the UNSEEN SportsMOT val split
 # (26,970 frames / 295,573 gt boxes / 45 sequences, frame stride 1,
 # torchmetrics COCO mAP at detection threshold 0.01, Tesla T4, 2026-07-26).

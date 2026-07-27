@@ -1,5 +1,8 @@
 # Hugging Face eval-results format (https://huggingface.co/docs/hub/en/eval-results):
-# uploaded to the model repo as .eval_results/testing.yaml. PERFORMANCE-ONLY
+# Lives in the MODEL folder (Hub-facing artifacts, like the card) and is
+# uploaded to the model repo as .eval_results/testing.yaml. Produced by the
+# kaggle testing operation — declared as a 'result' artifact in the model's
+# externals.json. PERFORMANCE-ONLY
 # results from testing/index.kaggle.ipynb on the FULL SportsMOT test split
 # (150 sequences / 94,835 frames; no public ground truth, so no accuracy
 # metrics exist). Environment: Tesla T4 (sm_75, 15.6 GB), torch 2.10.0+cu128,
