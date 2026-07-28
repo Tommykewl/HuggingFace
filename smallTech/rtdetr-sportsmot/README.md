@@ -40,6 +40,13 @@ model-index:
     source:
       name: Kaggle evaluation kernel (benchmarks.json)
       url: https://www.kaggle.com/code/tamobiswas/rtdetr-sportsmot-evaluation
+co2_eq_emissions:
+  emissions: 300
+  source: 'post-hoc estimate, ML CO2 Impact methodology: 70W Tesla T4 x ~9.5h training x ~1.1
+    PUE x ~430 gCO2eq/kWh (measured tracking via codecarbon added for future runs)'
+  training_type: fine-tuning
+  geographical_location: Google Cloud via Kaggle free tier (region not disclosed, US assumed)
+  hardware_used: 1x NVIDIA Tesla T4 (16 GB)
 ---
 
 # rtdetr-sportsmot — RT-DETRv2 (r50vd) fine-tuned on SportsMOT for player detection
