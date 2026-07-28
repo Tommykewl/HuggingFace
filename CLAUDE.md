@@ -36,8 +36,9 @@ README.
 entries of `{service, reference, path, used_for, notes}` pointing into
 `external/`. `used_for` is a list of operation objects
 `{"name": "<operation>", "artifacts": [{"name": ..., "type": "script" |
-"result"}]}` — `script` artifacts are the external's runnables (the launcher
-resolves ONLY declared scripts; an undeclared script on disk is an error),
+"result"}]}` — `script` artifacts are the external's runnables (the
+declarations ARE the search space: an undeclared script on disk is invisible
+to resolution),
 `result` artifacts are operation outputs living Hub-side in the model folder
 (`<model>/<operation>/results.yaml`, uploaded as
 `.eval_results/<operation>.yaml`). Resources merely consumed — datasets,

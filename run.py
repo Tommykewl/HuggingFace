@@ -72,9 +72,10 @@ def ask_target(argv):
 # externals.json. An external's used_for is a list of operation objects:
 #   {"name": "<operation>", "artifacts": [{"name": ..., "type": "script" |
 #   "result"}, ...]}
-# — an external is searched only when it declares the requested operation, and
-# a runnable found there must be declared as a 'script' artifact (single
-# source of truth: an undeclared script on disk is an error, not a fallback).
+# — an external is searched only when it declares the requested operation AND
+# the requested name as a 'script' artifact. The declarations are the whole
+# search space: a script on disk that isn't declared is simply invisible to
+# resolution (it does not exist as far as the launcher is concerned).
 # 'result' artifacts are operation OUTPUTS living Hub-side in the model folder
 # (<model>/<operation>/results.yaml) — never runnables. A runnable matches
 # when its filename starts with "<script_name>." and has a script extension;
@@ -110,15 +111,11 @@ def resolve_script(ns, model_name, type_, name):
                  if isinstance(op, dict) and op.get("name") == type_), None)
             if operation is None:
                 continue               # external not used for this operation
-            declared = sorted(a.get("name") for a in operation.get("artifacts", [])
-                              if a.get("type") == "script")
+            declared = {a.get("name") for a in operation.get("artifacts", [])
+                        if a.get("type") == "script"}
+            if name not in declared:
+                continue               # undeclared -> invisible to resolution
             for p in runnables(ROOT / "external" / service / ref / type_):
-                if name not in declared:
-                    sys.exit(f"ERROR[undeclared-artifact]: {p.relative_to(ROOT)} "
-                             f"exists but '{name}' is not declared as a 'script' "
-                             f"artifact of the '{type_}' operation in "
-                             f"{ns}/{model_name}/externals.json — declare it "
-                             f"there or remove the file. Declared: {declared}")
                 candidates.append((service, p))
 
     if not candidates:
