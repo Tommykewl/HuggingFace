@@ -24,19 +24,15 @@ model-index:
     - type: map
       name: mAP@[.5:.95]
       value: 0.7928
-      verified: false
     - type: map50
       name: mAP@50
       value: 0.9383
-      verified: false
     - type: map75
       name: mAP@75
       value: 0.882
-      verified: false
     - type: mar100
       name: mAR@100
       value: 0.8269
-      verified: false
     source:
       name: Kaggle evaluation kernel (benchmarks.json)
       url: https://www.kaggle.com/code/tamobiswas/rtdetr-sportsmot-evaluation
