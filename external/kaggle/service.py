@@ -107,7 +107,7 @@ class KaggleService(BaseService):
     # -- service entry point (guarded by BaseService.run) ---------------------
     def _run(self, script: Path, model: str, type_: str, name: str) -> str:
         self._setup()
-        config = self.load_config(script, name)
+        config = self._load_config(script, name)
         model_name = model.split("/", 1)[1]
 
         api, user = self._api()

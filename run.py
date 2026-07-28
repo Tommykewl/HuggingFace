@@ -207,7 +207,7 @@ class HuggingFaceService(BaseService):
 
     # -- service entry point (guarded by BaseService.run) ---------------------
     def _run(self, script, model, type_, name):
-        config = self.load_config(script, name)
+        config = self._load_config(script, name)
         # The top-level "options" block is the ONLY source of run options —
         # nothing is assumed here and nothing is read from other parts of the
         # config.

@@ -39,11 +39,13 @@ Services implement:
   * login() — as above.
   * is_logged_in() -> bool — cheap credential check.
 
-Shared helper:
+Shared helper (service-level, protected — a service's _run calls it only if
+that service needs a config; a future config-less service simply doesn't):
 
-  * load_config(script, name)
-        The runnable's adjacent <name>.config.json — the SINGLE source of run
-        options (services must not assume values or read options elsewhere).
+  * _load_config(script, name)
+        The runnable's adjacent <name>.config.json or <name>.config.yaml —
+        the SINGLE source of run options and operation inputs (services must
+        not assume values or read options elsewhere).
 """
 
 import json
@@ -108,11 +110,22 @@ class BaseService(ABC):
     @abstractmethod
     def _list_datasets(self) -> list: ...
 
-    # -- shared helpers ------------------------------------------------------
-    def load_config(self, script: Path, name: str) -> dict:
-        """The runnable's adjacent <name>.config.json (single options source)."""
-        config_path = script.parent / f"{name}.config.json"
-        if not config_path.is_file():
-            sys.exit(f"Missing config: {config_path} "
-                     "(every runnable needs a <name>.config.json)")
-        return json.load(open(config_path))
+    # -- shared helpers (protected: for service implementations only) --------
+    def _load_config(self, script: Path, name: str) -> dict:
+        """The runnable's adjacent <name>.config.json OR <name>.config.yaml.
+
+        The single source of run options and operation inputs. Protected on
+        purpose: only a service's _run knows whether it needs a config, so
+        calling (and thus requiring) one is a service-level decision — a
+        config-less service simply never calls this.
+        """
+        for suffix, loader in ((".config.json", json.load),
+                               (".config.yaml", None), (".config.yml", None)):
+            config_path = script.parent / f"{name}{suffix}"
+            if config_path.is_file():
+                if loader is json.load:
+                    return json.load(open(config_path))
+                import yaml                # provided transitively; lazy on purpose
+                return yaml.safe_load(open(config_path)) or {}
+        sys.exit(f"Missing config: {script.parent / (name + '.config.json')} "
+                 f"(or .config.yaml) — this service requires one per runnable")
