@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RT-DETRv2 · SportsMOT player detection</title>
+<style>
+  :root { color-scheme: light dark;
+          --accent: #16a34a; --bg: #fafafa; --fg: #111; --card: #fff; --muted: #667; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --fg: #e5e7eb; --card: #171a21; --muted: #9aa; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.55 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.45rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: .95rem; }
+  .sub a { color: var(--accent); }
+  #drop { border: 2px dashed color-mix(in srgb, var(--muted) 45%, transparent);
+          border-radius: 12px; padding: 28px; text-align: center; cursor: pointer;
+          background: var(--card); transition: border-color .15s; }
+  #drop.hover, #drop:hover { border-color: var(--accent); }
+  #drop input { display: none; }
+  .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+  .row label { font-size: .9rem; color: var(--muted); }
+  input[type=range] { accent-color: var(--accent); width: 220px; }
+  #status { font-size: .9rem; color: var(--muted); min-height: 1.4em; }
+  #bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--muted) 25%, transparent);
+         overflow: hidden; margin-top: 6px; display: none; }
+  #bar > div { height: 100%; width: 0%; background: var(--accent); transition: width .2s; }
+  canvas { max-width: 100%; border-radius: 12px; display: block; margin-top: 12px; }
+  .examples { display: flex; gap: 10px; margin-top: 8px; }
+  .examples img { width: 130px; border-radius: 8px; cursor: pointer;
+                  border: 2px solid transparent; transition: border-color .15s; }
+  .examples img:hover { border-color: var(--accent); }
+  #summary { margin-top: 10px; font-size: .95rem; }
+  footer { margin-top: 40px; font-size: .85rem; color: var(--muted); }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>🏀 RT-DETRv2 · SportsMOT player detection</h1>
+  <p class="sub">
+    Single-class <strong>player</strong> detector —
+    <a href="https://huggingface.co/smallTech/rtdetr-sportsmot">smallTech/rtdetr-sportsmot</a>,
+    fine-tuned on <a href="https://huggingface.co/datasets/Lekim89/sportsmot">SportsMOT</a>.
+    mAP@50 <strong>0.938</strong> on 45 unseen sequences.
+    Runs <strong>entirely in your browser</strong> (transformers.js + ONNX, q8) — no server,
+    your images never leave this page.
+  </p>
+
+  <div id="drop">
+    <input type="file" id="file" accept="image/*" />
+    <div><strong>Drop a sports frame here</strong> or click to choose a file</div>
+    <div class="examples" style="justify-content:center">
+      <img src="examples/basketball.jpg" title="basketball (val split)" />
+      <img src="examples/frame2.jpg" title="val sequence 2" />
+      <img src="examples/frame3.jpg" title="val sequence 3" />
+    </div>
+  </div>
+
+  <div class="row">
+    <label>Confidence threshold
+      <input type="range" id="threshold" min="0.05" max="0.95" step="0.05" value="0.5" />
+      <span id="tval">0.50</span>
+    </label>
+  </div>
+
+  <div id="status">Loading model (~45 MB, cached after first visit)…</div>
+  <div id="bar"><div></div></div>
+  <canvas id="canvas" hidden></canvas>
+  <div id="summary"></div>
+
+  <footer>
+    Detection stage of a ByteTrack tracking-by-detection pipeline ·
+    benchmarks on the <a href="https://huggingface.co/smallTech/rtdetr-sportsmot">model card</a> ·
+    one-click <a href="https://huggingface.co/smallTech/rtdetr-sportsmot/colab">Colab</a> /
+    <a href="https://huggingface.co/smallTech/rtdetr-sportsmot/kaggle">Kaggle</a> notebook ·
+    example frames from the SportsMOT val split.
+  </footer>
+</main>
+
+<script type="module">
+import { AutoImageProcessor, AutoModelForObjectDetection, RawImage, env }
+  from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0";
+
+// Weights live inside this Space (the source model repo is gated; these ONNX
+// derivatives are served as static assets alongside the page).
+env.allowRemoteModels = false;
+env.localModelPath = new URL("./models/", location.href).href;
+
+const $ = (id) => document.getElementById(id);
+const status = $("status"), bar = $("bar"), barFill = bar.firstElementChild;
+const canvas = $("canvas"), ctx = canvas.getContext("2d");
+const summary = $("summary"), thr = $("threshold"), tval = $("tval");
+let currentImage = null;
+
+const progress = (p) => {
+  if (p.status === "progress" && p.total) {
+    bar.style.display = "block";
+    barFill.style.width = `${(p.loaded / p.total) * 100}%`;
+    status.textContent = `Downloading model — ${(p.loaded / 1e6).toFixed(0)} / ${(p.total / 1e6).toFixed(0)} MB`;
+  }
+};
+
+// Explicit component construction: the pipeline() factory's processor
+// auto-detection can't probe a URL-valued localModelPath (transformers.js
+// 4.2.0), so we build the parts ourselves.
+let processor, model;
+try {
+  processor = await AutoImageProcessor.from_pretrained("rtdetr-sportsmot");
+  model = await AutoModelForObjectDetection.from_pretrained(
+    "rtdetr-sportsmot", { dtype: "q8", progress_callback: progress });
+  bar.style.display = "none";
+  status.textContent = "Model ready — drop an image or click an example.";
+} catch (e) {
+  status.textContent = `Failed to load model: ${e.message}`;
+  throw e;
+}
+
+async function detect(src) {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  await new Promise((ok, err) => { img.onload = ok; img.onerror = err; img.src = src; });
+  currentImage = img;
+  status.textContent = "Detecting…";
+  summary.textContent = "";
+  const t0 = performance.now();
+  const raw = await RawImage.read(src);
+  const inputs = await processor(raw);
+  const outputs = await model(inputs);
+  // 4th arg = sigmoid semantics: RT-DETR has no DETR-style "no-object" class,
+  // and the default softmax path would discard our single class entirely.
+  const [res] = processor.post_process_object_detection(
+    outputs, parseFloat(thr.value), [[raw.height, raw.width]], true);
+  const ms = performance.now() - t0;
+  draw(img, res);
+  const n = res.scores.length;
+  summary.innerHTML = n
+    ? `<strong>${n} player${n === 1 ? "" : "s"}</strong> detected in ${(ms / 1000).toFixed(1)} s ` +
+      `(scores ${Math.min(...res.scores).toFixed(2)}–${Math.max(...res.scores).toFixed(2)})`
+    : `No players at conf ≥ ${thr.value} — try lowering the threshold.`;
+  status.textContent = "Done. Adjust the threshold to re-run, or try another image.";
+}
+
+function draw(img, res) {
+  canvas.hidden = false;
+  canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+  ctx.drawImage(img, 0, 0);
+  const lw = Math.max(2, canvas.width / 320);
+  ctx.font = `${Math.max(14, canvas.width / 55)}px system-ui`;
+  res.scores.forEach((score, i) => {
+    const [xmin, ymin, xmax, ymax] = res.boxes[i];
+    ctx.strokeStyle = "#16e07a"; ctx.lineWidth = lw;
+    ctx.strokeRect(xmin, ymin, xmax - xmin, ymax - ymin);
+    const label = score.toFixed(2);
+    const w = ctx.measureText(label).width + 8;
+    ctx.fillStyle = "rgba(3, 60, 30, 0.85)";
+    ctx.fillRect(xmin, Math.max(0, ymin - 22), w, 22);
+    ctx.fillStyle = "#d4ffe8";
+    ctx.fillText(label, xmin + 4, Math.max(16, ymin - 5));
+  });
+}
+
+// wiring: drop zone, file picker, examples, threshold re-run
+const drop = $("drop"), file = $("file");
+drop.addEventListener("click", (e) => { if (e.target.tagName !== "IMG") file.click(); });
+file.addEventListener("change", () => {
+  if (file.files[0]) detect(URL.createObjectURL(file.files[0]));
+});
+["dragover", "dragenter"].forEach(ev =>
+  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("hover"); }));
+["dragleave", "drop"].forEach(ev =>
+  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("hover"); }));
+drop.addEventListener("drop", (e) => {
+  const f = e.dataTransfer.files[0];
+  if (f) detect(URL.createObjectURL(f));
+});
+document.querySelectorAll(".examples img").forEach(el =>
+  el.addEventListener("click", () => detect(el.src)));
+thr.addEventListener("input", () => { tval.textContent = parseFloat(thr.value).toFixed(2); });
+thr.addEventListener("change", () => { if (currentImage) detect(currentImage.src); });
+</script>
+</body>
+</html>

@@ -73,11 +73,15 @@ ByteTrack via the `supervision` library) for basketball player tracking.
 
 ## Try it in one click
 
-The repo ships a ready-to-run inference notebook (`notebook.ipynb`): open it
-directly in [Colab](https://huggingface.co/smallTech/rtdetr-sportsmot/colab)
-or [Kaggle](https://huggingface.co/smallTech/rtdetr-sportsmot/kaggle), or via
-the "Use this model" button above — install → load → detect → visualize, no
-token needed, CPU or GPU.
+- **[Live demo Space](https://huggingface.co/spaces/smallTech/rtdetr-sportsmot)** —
+  detection **in your browser** (transformers.js + q8 ONNX, ~45 MB download,
+  no server, images never leave the page): drop a sports frame, get player
+  boxes.
+- **Notebook** (`notebook.ipynb`): open in
+  [Colab](https://huggingface.co/smallTech/rtdetr-sportsmot/colab) or
+  [Kaggle](https://huggingface.co/smallTech/rtdetr-sportsmot/kaggle), or via
+  the "Use this model" button above — install → load → detect → visualize, no
+  token needed, CPU or GPU.
 
 ## Validation (held-out basketball sequence `v_-6Os86HzwCs_c009`)
 
