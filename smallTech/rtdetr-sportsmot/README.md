@@ -4,6 +4,7 @@ base_model: PekingU/rtdetr_v2_r50vd
 datasets:
 - Lekim89/sportsmot
 pipeline_tag: object-detection
+library_name: transformers
 tags:
 - rt-detr-v2
 - sports
@@ -43,6 +44,23 @@ co2_eq_emissions:
   training_type: fine-tuning
   geographical_location: Google Cloud via Kaggle free tier (region not disclosed, US assumed)
   hardware_used: 1x NVIDIA Tesla T4 (16 GB)
+extra_gated_prompt: "You agree to not use the model for non-commercial use ONLY"
+extra_gated_fields:
+  Company: text
+  Country: country
+  I want to use this model for:
+    type: select
+    options:
+      - Research
+      - Education
+      - label: Other
+        value: other
+  I agree to use this model for non-commercial use ONLY: checkbox
+widget:
+- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/football-match.jpg
+  example_title: Football Match
+- src: https://huggingface.co/datasets/mishig/sample_images/resolve/main/airport.jpg
+  example_title: Airport
 ---
 
 # rtdetr-sportsmot — RT-DETRv2 (r50vd) fine-tuned on SportsMOT for player detection
