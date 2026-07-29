@@ -88,6 +88,7 @@ import { AutoImageProcessor, AutoModelForObjectDetection, RawImage, env }
 // Weights live inside this Space (the source model repo is gated; these ONNX
 // derivatives are served as static assets alongside the page).
 env.allowRemoteModels = false;
+env.allowLocalModels = true;   // browser builds default this to FALSE (Node: true)
 env.localModelPath = new URL("./models/", location.href).href;
 
 const $ = (id) => document.getElementById(id);
