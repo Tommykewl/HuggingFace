@@ -90,6 +90,22 @@ token needed, CPU or GPU.
 
 ## Usage
 
+> **Note:** this is a vision model — its preprocessor is an
+> `AutoImageProcessor` (there is **no** tokenizer). Ignore the auto-generated
+> "Load model directly" snippet in the *Use this model* button if it shows
+> `AutoTokenizer` — that call will error. Use either option below.
+
+**Simplest — `pipeline`:**
+
+```python
+from transformers import pipeline
+
+pipe = pipeline("object-detection", model="smallTech/rtdetr-sportsmot")
+results = pipe("frame.jpg", threshold=0.5)   # [{'score', 'label': 'player', 'box'}, ...]
+```
+
+**Manual — processor + model** (full control over pre/post-processing):
+
 ```python
 import torch
 from PIL import Image
