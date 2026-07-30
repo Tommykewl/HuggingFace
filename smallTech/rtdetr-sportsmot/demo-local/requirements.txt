@@ -1,6 +1,0 @@
-# gradio / spaces / huggingface_hub are preinstalled by the platform — never list them.
-transformers
-torch
-torchvision
-timm
-pillow
