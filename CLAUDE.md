@@ -15,8 +15,13 @@ the Hub). Temp data goes in the session scratchpad and is deleted once used.
 
 ## Layout
 
-Model folder path = Hub repo id: `<namespace>/<model>/` (e.g.
-`smallTech/rtdetr-sportsmot`). Stage subfolders — `data-preparation/`,
+Hub repos are tracked as **git submodules**, grouped by repo type:
+`<namespace>/models/<model>/` is a submodule of the HF model repo and
+`<namespace>/spaces/<space>/` of the HF Space repo (clone with
+`GIT_LFS_SKIP_SMUDGE=1` — weights stay as LFS pointers, never materialized
+locally; gated repos need HF git credentials). Init only the submodules you
+need. Launcher targets keep the `<namespace>/<model>/...` syntax; run.py maps
+them to `<namespace>/models/<model>/`. Stage subfolders — `data-preparation/`,
 `training/`, `evaluation/`, `testing/`, … — exist only when actually exercised (no
 runnables kept "for later"); each runnable sits next to a
 `<name>.config.json`, the single source of its run options. A stage's main
@@ -25,12 +30,14 @@ optional `smoketest.*` and, when the operation needs data staged for it, a
 `prepare-data.*`. Staging is NOT dataset creation: `data-preparation/` exists
 for models that actually produce a dataset; a model consuming an
 already-prepared dataset (like the current one) has no such stage, and its
-staging scripts live inside the operations they feed. Each model folder's
-`README.md` IS the Hub model card, uploaded verbatim — card content only
-(frontmatter, benchmarks, usage); kernels update its marker-delimited
-benchmark sections in place, so never hand-edit inside markers. Repo-setup
-and pipeline documentation belongs in the workspace README, not the model
-README.
+staging scripts live inside the operations they feed. Because the model
+folder IS the Hub repo (submodule), its `README.md` is literally the model
+card — card content only (frontmatter, benchmarks, usage); kernels update its
+marker-delimited benchmark sections in place, so never hand-edit inside
+markers, and always `git -C <submodule> pull` before editing (kernels and
+HfApi uploads commit to the HF repo outside your local checkout). Repo-setup
+and pipeline documentation belongs in the workspace README. `externals.json`
+also lives in the model repo.
 
 `externals.json` (model level) lists operations DELEGATED to other services:
 entries of `{service, reference, path, used_for, notes}` pointing into
@@ -39,9 +46,8 @@ entries of `{service, reference, path, used_for, notes}` pointing into
 "result"}]}` — `script` artifacts are the external's runnables (the
 declarations ARE the search space: an undeclared script on disk is invisible
 to resolution),
-`result` artifacts are operation outputs living Hub-side in the model folder
-(`<model>/<operation>/results.yaml`, uploaded as
-`.eval_results/<operation>.yaml`). Resources merely consumed — datasets,
+`result` artifacts are operation outputs living in the model repo at
+`.eval_results/<operation>.yaml` (the Hugging Face eval-results location). Resources merely consumed — datasets,
 kernel outputs, Hub artifacts — belong in the runnable's config.json, never
 here. Orchestration tooling resolves references from this file.
 

@@ -86,10 +86,16 @@ RUNNABLE_SUFFIXES = (".py", ".ipynb")
 
 
 def resolve_script(ns, model_name, type_, name):
-    """Return (service, script_path). service 'huggingface' == first-party."""
-    model_dir = ROOT / ns / model_name
+    """Return (service, script_path). service 'huggingface' == first-party.
+
+    Model folders live at <ns>/models/<model> — git submodules of the HF
+    model repos — while targets keep the <ns>/<model>/... syntax.
+    """
+    model_dir = ROOT / ns / "models" / model_name
     if not model_dir.is_dir():
-        sys.exit(f"ERROR: model folder not found: {ns}/{model_name}")
+        sys.exit(f"ERROR: model folder not found: {ns}/models/{model_name} "
+                 "(a git submodule — run: git submodule update --init "
+                 f"{ns}/models/{model_name})")
 
     def runnables(directory):
         if not directory.is_dir():

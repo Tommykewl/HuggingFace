@@ -15,7 +15,10 @@ HuggingFace/                            ← workspace root
 ├── baseservice.py                      – BaseService interface every service runner extends
 ├── pyproject.toml                      – launcher dependencies (huggingface_hub, kaggle)
 ├── <namespace>/                        – a Hub namespace (user or org, e.g. smallTech)
-│   └── <model>/                        – one folder per model, named after its Hub repo id
+│   ├── models/<model>/                 – git SUBMODULE of the HF model repo (card, configs,
+│   │                                     externals.json, .eval_results/ — weights stay LFS pointers)
+│   └── spaces/<space>/                 – git SUBMODULE of the HF Space repo (demo apps)
+│       — inside a model submodule:
 │       ├── data-preparation/           – (when used) dataset-CREATION runnables — absent when
 │       │                                 the dataset is already prepared, as for the current model
 │       ├── training/                   – (when used) index.py (the trainer) + smoketest.py + configs
@@ -30,9 +33,11 @@ HuggingFace/                            ← workspace root
             └── ...                       same stage layout, e.g. train.kaggle.ipynb + config
 ```
 
-`<namespace>/<model>` **is** the model's Hub repo id:
-`smallTech/rtdetr-sportsmot/` ↔
-`huggingface.co/smallTech/rtdetr-sportsmot`. A model folder
+`<namespace>/models/<model>` is a **git submodule of the model's HF repo**:
+`smallTech/models/rtdetr-sportsmot/` ↔
+`huggingface.co/smallTech/rtdetr-sportsmot` (same for Spaces under
+`<namespace>/spaces/<space>`). Submodules mean you init only what you work
+on instead of pulling everything. A model folder
 holds the first-party pipeline (run as Hugging Face Jobs); anything that runs
 elsewhere — e.g. Kaggle's free GPUs — lives under
 `external/<service>/<reference>/` with the same stage layout, referenced from
@@ -41,7 +46,7 @@ the model's `externals.json`. Every runnable has an adjacent
 
 ## Models
 
-- [`smallTech/rtdetr-sportsmot`](smallTech/rtdetr-sportsmot/) —
+- [`smallTech/rtdetr-sportsmot`](smallTech/models/rtdetr-sportsmot/) —
   RT-DETRv2 sports player detector (detection stage of a ByteTrack
   tracking-by-detection pipeline). The model folder holds the Hub model card
   (`README.md`, uploaded verbatim), `externals.json`, and the first-party
@@ -73,6 +78,9 @@ accounts:
 
 ```bash
 git clone https://github.com/Tommykewl/HuggingFace.git && cd HuggingFace
+# init only the submodules you need (models/spaces are HF repos; weights stay
+# as LFS pointers thanks to GIT_LFS_SKIP_SMUDGE; gated repos need HF git creds)
+GIT_LFS_SKIP_SMUDGE=1 git submodule update --init smallTech/models/rtdetr-sportsmot
 ./run.sh        # Windows: .\run.ps1 — installs uv, syncs deps; Ctrl-C at the target prompt
 ```
 
