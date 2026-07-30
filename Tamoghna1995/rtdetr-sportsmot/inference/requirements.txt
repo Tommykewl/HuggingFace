@@ -1,0 +1,6 @@
+# gradio / spaces / huggingface_hub are preinstalled and platform-managed — never list them.
+# torch is preinstalled by the ZeroGPU runtime (leave it unpinned).
+transformers
+torchvision
+timm
+pillow

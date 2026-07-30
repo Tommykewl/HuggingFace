@@ -73,10 +73,9 @@ ByteTrack via the `supervision` library) for basketball player tracking.
 
 ## Try it in one click
 
-- **[Live demo Space](https://huggingface.co/spaces/smallTech/rtdetr-sportsmot)** —
-  detection **in your browser** (transformers.js + q8 ONNX, ~45 MB download,
-  no server, images never leave the page): drop a sports frame, get player
-  boxes.
+- **[Live demo Space](https://huggingface.co/spaces/Tamoghna1995/rtdetr-sportsmot)** —
+  a Gradio app on **ZeroGPU**: drop a sports frame, tune the confidence
+  threshold, get annotated player boxes.
 - **Notebook** (`notebook.ipynb`): open in
   [Colab](https://huggingface.co/smallTech/rtdetr-sportsmot/colab) or
   [Kaggle](https://huggingface.co/smallTech/rtdetr-sportsmot/kaggle), or via
