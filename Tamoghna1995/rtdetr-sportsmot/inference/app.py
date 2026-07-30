@@ -131,6 +131,11 @@ with gr.Blocks(title="RT-DETRv2 · SportsMOT player detection") as demo:
         with gr.Column():
             annotated = gr.AnnotatedImage(label="Detected players")
             summary = gr.Markdown()
+            # Restores the "Share via Link" button that gr.Interface gave for
+            # free; gr.Blocks needs it added explicitly. The link captures the
+            # current session state (deep links are ephemeral — reset when the
+            # Space restarts/rebuilds; the permanent link is the Space URL).
+            gr.DeepLinkButton()
 
     # Random: load a bucket frame (CPU) into the input, then run the single
     # GPU detect on it. detect_btn binds `detect` directly so ZeroGPU's
