@@ -67,11 +67,23 @@ class LoadOperation(RepoOperation):
                      f"Hugging Face Hub — see: list {entity}")
         if target.is_dir() and any(target.iterdir()):
             sys.exit(f"'{rel}' is already loaded — nothing to do")
+        url = f"{url_prefix}{ns}/{name}"
+        tracked_gitlink = git("ls-files", "--stage", "--", rel,
+                              capture=True, check=False).stdout.startswith("160000")
         if rel in registered_submodules():
-            # Registered from an earlier add (or another clone) — just init it.
+            # Registered in the machine-local .gitmodules — just init it.
+            git("submodule", "update", "--init", rel, lfs_skip=True)
+        elif tracked_gitlink:
+            # The superproject tracks the gitlink but .gitmodules is
+            # machine-local (gitignored) and this machine has no entry yet —
+            # recreate it, then init at the RECORDED commit (a plain
+            # `submodule add` would refuse: the path already exists in the
+            # index — and would check out the branch head instead).
+            git("config", "-f", ".gitmodules", f"submodule.{rel}.path", rel)
+            git("config", "-f", ".gitmodules", f"submodule.{rel}.url", url)
             git("submodule", "update", "--init", rel, lfs_skip=True)
         else:
-            git("submodule", "add", f"{url_prefix}{ns}/{name}", rel, lfs_skip=True)
-            print(f"note: the new submodule (+ .gitmodules) is staged — commit it "
-                  "to keep it tracked")
-        print(f"Loaded: {rel}  <->  {url_prefix}{ns}/{name}")
+            git("submodule", "add", url, rel, lfs_skip=True)
+            print("note: the new submodule gitlink is staged — commit it to "
+                  "keep it tracked (.gitmodules itself stays machine-local)")
+        print(f"Loaded: {rel}  <->  {url}")
