@@ -1,4 +1,4 @@
-# Hugging Face Workspace
+# Machine Learning Master — ML-operations workspace
 
 ## Non-negotiable rule
 

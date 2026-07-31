@@ -1,14 +1,16 @@
-# Hugging Face Workspace
+# Machine Learning Master
 
-Developer-authored scripts for fine-tuning models and running them. Trained
-weights are published to the **Hugging Face Hub**, never stored here; no
-system files or caches live here either (those stay in `~/.cache/huggingface`).
+The master repository for machine-learning operations: developer-authored
+scripts for fine-tuning models and running them, orchestrated across
+services (Hugging Face, Kaggle, ...) by the mlops utility. Trained weights
+are published to the **Hugging Face Hub**, never stored here; no system
+files or caches live here either (those stay in `~/.cache/huggingface`).
 Workspace conventions are in [`CLAUDE.md`](CLAUDE.md).
 
 ## Layout
 
 ```
-HuggingFace/                            ← workspace root
+MachineLearningMaster/                  ← workspace root
 ├── mlops.sh · mlops.ps1                    – launcher (Linux/macOS · Windows): prerequisite
 │                                         checks + uv bootstrap, then hand-off to lib/main.py
 ├── lib/                                – the operations implementation
@@ -85,7 +87,7 @@ accounts:
 **1. Bootstrap the environment**
 
 ```bash
-git clone https://github.com/Tommykewl/HuggingFace.git && cd HuggingFace
+git clone https://github.com/Tommykewl/MachineLearningMaster.git && cd MachineLearningMaster
 ./mlops.sh help   # Windows: .\mlops.ps1 — installs uv, syncs deps, prints the operations
 ```
 
