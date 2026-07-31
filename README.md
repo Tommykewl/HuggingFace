@@ -86,13 +86,17 @@ accounts:
 
 ```bash
 git clone https://github.com/Tommykewl/HuggingFace.git && cd HuggingFace
-# init only the submodules you need — they all live under hf/ (models/spaces/
-# datasets are HF repos; weights stay as LFS pointers thanks to
-# GIT_LFS_SKIP_SMUDGE; gated repos need HF git creds). `./mlops.sh list
-# namespaces` shows your account's namespaces and which are loaded locally; after
-# setup, `./mlops.sh load models <namespace> <model>` does this for you.
-GIT_LFS_SKIP_SMUDGE=1 git submodule update --init hf/smallTech/models/rtdetr-sportsmot
 ./mlops.sh help   # Windows: .\mlops.ps1 — installs uv, syncs deps, prints the operations
+```
+
+Hub repos are NOT materialized by the clone — `.gitmodules` is machine-local
+(gitignored); after attaching your accounts (step 2), load only the
+submodules you need with the mlops utility (weights stay as LFS pointers;
+gated repos need HF git creds):
+
+```bash
+./mlops.sh list namespaces                          # your account's namespaces
+./mlops.sh load models smallTech rtdetr-sportsmot   # registers + clones under hf/
 ```
 
 **2. Attach your accounts** — copy the template and fill in your tokens; the
