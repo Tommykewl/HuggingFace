@@ -15,13 +15,16 @@ the Hub). Temp data goes in the session scratchpad and is deleted once used.
 
 ## Layout
 
-Hub repos are tracked as **git submodules**, grouped by repo type:
-`<namespace>/models/<model>/` is a submodule of the HF model repo and
-`<namespace>/spaces/<space>/` of the HF Space repo (clone with
+Hub repos are tracked as **git submodules**, all under the `hf/` folder and
+grouped by repo type: `hf/<namespace>/models/<model>/` is a submodule of the
+HF model repo, `hf/<namespace>/spaces/<space>/` of the HF Space repo, and
+`hf/<namespace>/datasets/<dataset>/` of the HF dataset repo (cloned with
 `GIT_LFS_SKIP_SMUDGE=1` — weights stay as LFS pointers, never materialized
 locally; gated repos need HF git credentials). Init only the submodules you
-need. Launcher targets keep the `<namespace>/<model>/...` syntax; run.py maps
-them to `<namespace>/models/<model>/`. Stage subfolders — `data-preparation/`,
+need — via the launcher's `load|unload <models|spaces|datasets>
+<namespace> <name>` operations (`list namespaces` shows the account's namespaces and
+which are loaded). Launcher targets keep the `<namespace>/<model>/...`
+syntax; lib/main.py maps them to `hf/<namespace>/models/<model>/`. Stage subfolders — `data-preparation/`,
 `training/`, `evaluation/`, `testing/`, … — exist only when actually exercised (no
 runnables kept "for later"); each runnable sits next to a
 `<name>.config.json`, the single source of its run options. A stage's main
@@ -40,8 +43,8 @@ and pipeline documentation belongs in the workspace README. `externals.json`
 also lives in the model repo.
 
 `externals.json` (model level) lists operations DELEGATED to other services:
-entries of `{service, reference, path, used_for, notes}` pointing into
-`external/`. `used_for` is a list of operation objects
+entries of `{service, reference, path, used_for, notes}` pointing into the
+service's root folder (e.g. `kaggle/`). `used_for` is a list of operation objects
 `{"name": "<operation>", "artifacts": [{"name": ..., "type": "script" |
 "result"}]}` — `script` artifacts are the external's runnables (the
 declarations ARE the search space: an undeclared script on disk is invisible
@@ -51,10 +54,10 @@ to resolution),
 kernel outputs, Hub artifacts — belong in the runnable's config.json, never
 here. Orchestration tooling resolves references from this file.
 
-`external/<service>/<reference>/` mirrors the same stage layout for anything
-that runs on another service (`kaggle`, `local`, …). An external gets its own
-externals.json only if it delegates further; the current Kaggle external
-delegates nothing, so it has none.
+`<service>/jobs/<reference>/` (at the repo root) mirrors the same stage
+layout for anything that runs on another service (`kaggle/`, …). An external gets
+its own externals.json only if it delegates further; the current Kaggle
+external delegates nothing, so it has none.
 
 All scripts must be self-explanatory via comments.
 
@@ -62,17 +65,27 @@ All scripts must be self-explanatory via comments.
 
 - Python runnables are self-contained uv scripts (PEP 723); first-party ones
   run as Hugging Face Jobs with the options in the adjacent config.json.
-- Launcher: `./run.sh <namespace>/<model>/<type>/<script_name>` (Windows:
-  `.\run.ps1`). The wrappers only check prerequisites (git, python), install
-  uv, and `uv sync`; `run.py` resolves the target (model folder first, then
-  the model's externals.json) and runs it. Details are in their comments.
-- Every service runner is one class extending BaseService (root
-  `baseservice.py` — the docstring is the contract): exactly one
-  `external/<service>/service.py`, class only (no main, no argparse, no
-  import-time side effects), imported dynamically by run.py and run
-  in-process. Hugging Face Jobs is the built-in HuggingFaceService in run.py
-  — no service.py for huggingface.
-- Auth: run.py `load_dotenv()`s the workspace `.env` (template
+- Launcher: `./mlops.sh <operation> <entity> [args]` (Windows:
+  `.\mlops.ps1`) — operations are verbs, the entity is their first
+  mandatory argument: `list <namespaces|models|spaces|datasets|jobs>`;
+  `load|unload <models|spaces|datasets> <namespace> <name>` (materialize /
+  deinit the Hub repo's submodule under `hf/`); `git <models|spaces|datasets>
+  <namespace> <name> <git args...>` (proxy a git command to that submodule);
+  `execute jobs <namespace>/<model>/<type>/<script_name>`;
+  `status jobs <run_id> [service]`; and `help [operation [entity]]`.
+  The wrappers only
+  check prerequisites (git, python), install uv, and `uv sync`; `lib/main.py`
+  for `execute jobs` resolves the target (model folder first, then
+  the model's externals.json) and runs it; the listing operations call the
+  service methods (credentials are checked by each service's login(), not
+  upfront). Details are in their comments.
+- Every service runner is one class extending BaseService (workspace
+  `lib/baseservice.py` — the docstring is the contract): exactly one service.py
+  per service — `hf/service.py` for huggingface (Hugging Face Jobs),
+  `<service>/service.py` for externals — class only (no main, no
+  argparse, no import-time side effects), imported dynamically by lib/main.py and
+  run in-process.
+- Auth: lib/main.py `load_dotenv()`s the workspace `.env` (template
   `.env.example`) at startup; every public service method calls the
   service's login() first, which mandates that service's credential env
   vars (HF_TOKEN; KAGGLE_TOKEN or KAGGLE_USERNAME/KAGGLE_KEY) and exits

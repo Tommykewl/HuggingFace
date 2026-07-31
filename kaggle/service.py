@@ -1,13 +1,13 @@
 """Kaggle service runner — a single BaseService class (see workspace
-baseservice.py); run.py imports this module dynamically and calls its methods
+lib/baseservice.py); lib/main.py imports this module dynamically and calls its methods
 in-process. No main(), no argparse, no CLI subprocesses: the kaggle Python
 library is used directly (the kaggle CLI is only a wrapper around it).
 
 Implements the full BaseService contract:
   run()           -> run id "<user>/<kernel-slug>" (the pushed kernel ref)
   get_status(id)  -> kernels_status: QUEUED / RUNNING / COMPLETE / ERROR ...
-  list_runs()     -> kernels_list(mine=True)
-  list_datasets() -> dataset_list(mine=True)
+  list(kind)      -> "runs": kernels_list(mine=True);
+                     "datasets": dataset_list(mine=True); nothing else
   login()         -> mandates Kaggle credentials in the environment
                      (workspace .env, loaded at startup) — the only login
                      route. Either credential kind works: KAGGLE_TOKEN (an
@@ -19,14 +19,14 @@ The kaggle library (not kagglehub) is used deliberately: kagglehub has no
 kernel push/status/list and no dataset-existence check — only auth,
 dataset/model download+upload, and notebook-output download.
 
-Given a resolved notebook (e.g. external/kaggle/<ref>/training/
+Given a resolved notebook (e.g. kaggle/jobs/<ref>/training/
 index.kaggle.ipynb), run():
 
   1. authenticates via the kaggle library (~/.kaggle/kaggle.json or
      ~/.kaggle/access_token) and reads the username;
   2. _setup(): ensures the private external-secrets dataset exists on the
      account — if missing, it is created from the HF_TOKEN environment
-     variable (loaded from .env by run.py at startup) and uploaded as a
+     variable (loaded from .env by lib/main.py at startup) and uploaded as a
      `secrets` file of KEY=VALUE lines;
   3. loads the notebook's adjacent <name>.config.json (kernel options:
      language, kernel_type, is_private, enable_gpu, machine_shape,
@@ -66,7 +66,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from baseservice import BaseService
+from lib.baseservice import BaseService
 
 SECRETS_SLUG = "external-secrets"
 
@@ -143,19 +143,21 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
         failure = getattr(response, "failure_message", None)
         return f"{status} ({failure})" if failure else status
 
-    def _list_runs(self) -> list:
-        """The current user's kernels, newest first."""
-        api, _ = self._api()
-        kernels = api.kernels_list(mine=True, page_size=50, sort_by="dateRun") or []
-        return [{"id": str(k.ref), "title": str(getattr(k, "title", "") or ""),
-                 "status": None}           # kernels_list carries no per-run status;
-                for k in kernels if k]     # use get_status(id) for a specific run
+    def _list(self, kind: str) -> list:
+        """The single listing implementation (see the BaseService contract).
 
-    def _list_datasets(self) -> list:
-        """The current user's datasets, as "<user>/<slug>" references."""
+        "runs" -> the current user's kernels, newest first; "datasets" ->
+        the current user's datasets as "<user>/<slug>" references."""
         api, _ = self._api()
-        datasets = api.dataset_list(mine=True) or []
-        return [str(d.ref) for d in datasets if d]
+        if kind == "runs":
+            kernels = api.kernels_list(mine=True, page_size=50, sort_by="dateRun") or []
+            return [{"id": str(k.ref), "title": str(getattr(k, "title", "") or ""),
+                     "status": None}       # kernels_list carries no per-run status;
+                    for k in kernels if k] # use get_status(id) for a specific run
+        if kind == "datasets":
+            datasets = api.dataset_list(mine=True) or []
+            return [str(d.ref) for d in datasets if d]
+        return None    # kind unknown here (e.g. Kaggle has no Spaces/namespaces)
 
     # -- helpers ------------------------------------------------------------
     def _setup(self) -> None:
@@ -164,7 +166,7 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
         Training kernels read HF_TOKEN from it (Kaggle Secrets are dropped on
         every push; dataset mounts persist). When it is missing, it is created
         here from the HF_TOKEN environment variable — loaded from .env by
-        run.py at startup — as a `secrets` file of KEY=VALUE lines, uploaded
+        lib/main.py at startup — as a `secrets` file of KEY=VALUE lines, uploaded
         private. Idempotent: a no-op when the dataset already exists.
         """
         api, user = self._api()
@@ -201,7 +203,7 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
             from kaggle.api.kaggle_api_extended import KaggleApi
         except ImportError:
             sys.exit("The kaggle Python library is required. It is installed by the "
-                     "launcher's `uv sync` — run via ./run.sh, or: uv sync")
+                     "launcher's `uv sync` — run via ./mlops.sh, or: uv sync")
         api = KaggleApi()
         try:
             api.authenticate()
@@ -287,7 +289,7 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
                 sys.exit(f"Kernel '{ref}' (from the config) is not COMPLETE "
                          f"(status: {status}).\n"
                          f"Its output is the staged data — run its prepare-data staging script first, e.g.: "
-                         f"./run.sh {model}/<type>/prepare-data")
+                         f"./mlops.sh execute jobs {model}/<type>/prepare-data")
 
     @staticmethod
     def _push(api, notebook: Path, meta: dict, timeout_seconds=None) -> str:

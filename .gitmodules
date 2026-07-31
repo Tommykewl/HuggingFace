@@ -1,6 +1,6 @@
 [submodule "smallTech/models/rtdetr-sportsmot"]
-	path = smallTech/models/rtdetr-sportsmot
+	path = hf/smallTech/models/rtdetr-sportsmot
 	url = https://huggingface.co/smallTech/rtdetr-sportsmot
 [submodule "Tamoghna1995/spaces/rtdetr-sportsmot"]
-	path = Tamoghna1995/spaces/rtdetr-sportsmot
+	path = hf/Tamoghna1995/spaces/rtdetr-sportsmot
 	url = https://huggingface.co/spaces/Tamoghna1995/rtdetr-sportsmot

@@ -1,11 +1,12 @@
 """baseservice.py — the interface every service runner implements.
 
 A *service* is anything that can execute one of the workspace's pipeline
-scripts and answer questions about its account: Hugging Face Jobs (built into
-run.py), Kaggle (external/kaggle/service.py), and so on. Each external
-service ships exactly one `external/<service>/service.py` that defines a
-single class extending BaseService — nothing else: no main(), no argparse, no
-side effects at import time. run.py imports the module dynamically, finds the
+scripts and answer questions about its account: Hugging Face Jobs
+(hf/service.py), Kaggle (kaggle/service.py), and so on. Each
+service ships exactly one service.py — hf/service.py for huggingface,
+<service>/service.py for externals — that defines a single class
+extending BaseService — nothing else: no main(), no argparse, no side
+effects at import time. lib/main.py imports the module dynamically, finds the
 BaseService subclass, instantiates it with the workspace root, and calls its
 methods in-process (no subprocess).
 
@@ -20,17 +21,26 @@ _implementation):
   * get_status(run_id) -> str
         Current status of a run previously started (or any run the account
         can see) identified by that run id.
-  * list_runs() -> list[dict]
-        The current user's runs, newest first, as {"id", "title", "status"}
-        dicts (fields best-effort; "id" is always usable with get_status).
-  * list_datasets() -> list[str]
-        The current user's datasets on the service, as reference strings.
+  * list(kind) -> list | dict | None
+        THE single listing method — one per service, taking the kind of
+        thing to list. Every service supports:
+          "runs"     the current user's runs, newest first, as {"id",
+                     "title", "status"} dicts (fields best-effort; "id" is
+                     always usable with get_status)
+          "datasets" the current user's datasets on the service
+        A service may support further kinds (hf/service.py's
+        HuggingFaceService adds "models", "spaces", "namespaces"; its repo
+        kinds return
+        {namespace: [ids]} dicts). A kind the service has NO CONCEPT of
+        (e.g. Spaces on Kaggle) returns None — lib/main.py's listings sweep every
+        service and skip the Nones. None means "not a thing here"; an empty
+        list/dict means "a thing here, and the account has none".
 
 Authentication — every public method calls login() first. login() is
 service-specific and therefore abstract here (each SDK names and consumes
 credentials differently), but every implementation follows one rule:
 credentials are MANDATED as environment variables from the workspace .env
-(template: .env.example, loaded by run.py at startup). Return only when the
+(template: .env.example, loaded by lib/main.py at startup). Return only when the
 environment holds usable credentials; sys.exit naming the missing
 variable(s) otherwise. No interactive prompts, no other login routes.
 
@@ -71,15 +81,12 @@ class BaseService(ABC):
         self.login()
         return self._get_status(run_id)
 
-    def list_runs(self) -> list:
-        """The current user's runs: [{"id", "title", "status"}, ...]."""
+    def list(self, kind: str):
+        """List the account's <kind> ("runs", "datasets", ...) — see the
+        module docstring for the contract; a kind the service has no
+        concept of returns None."""
         self.login()
-        return self._list_runs()
-
-    def list_datasets(self) -> list:
-        """The current user's datasets on the service, as reference strings."""
-        self.login()
-        return self._list_datasets()
+        return self._list(kind)
 
     # -- authentication ------------------------------------------------------
     @abstractmethod
@@ -88,7 +95,7 @@ class BaseService(ABC):
 
         Called by every public method before doing anything else. An
         implementation must mandate its credentials as env vars (the
-        workspace .env is loaded by run.py at startup), return only when
+        workspace .env is loaded by lib/main.py at startup), return only when
         they authenticate, and sys.exit naming the missing variable(s)
         otherwise. No interactive prompts or other fallbacks.
         """
@@ -105,10 +112,7 @@ class BaseService(ABC):
     def _get_status(self, run_id: str) -> str: ...
 
     @abstractmethod
-    def _list_runs(self) -> list: ...
-
-    @abstractmethod
-    def _list_datasets(self) -> list: ...
+    def _list(self, kind: str): ...
 
     # -- shared helpers (protected: for service implementations only) --------
     def _load_config(self, script: Path, name: str) -> dict:
