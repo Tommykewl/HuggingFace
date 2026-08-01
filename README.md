@@ -101,7 +101,7 @@ gated repos need HF git creds):
 
 ```bash
 ./mlops.sh list namespaces                          # your account's namespaces
-./mlops.sh load models smallTech rtdetr-sportsmot   # registers + clones under hf/
+./mlops.sh load models huggingface smallTech rtdetr-sportsmot   # registers + clones under hf/
 ```
 
 **2. Attach your accounts** — copy the template and fill in your tokens; the

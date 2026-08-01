@@ -11,9 +11,9 @@ Implements the full BaseService contract:
                      the logged-in username; nothing else
   create(...)     -> always errors: Kaggle creates nothing by name (kernels
                      appear via kernels_push, datasets/models via uploads)
-  delete(entity, name) -> "jobs": kernels_delete; "datasets":
-                     dataset_delete; "models": model_delete (bare names get
-                     the username prefixed); nothing else
+  delete(entity, namespace, name) -> "jobs": kernels_delete; "datasets":
+                     dataset_delete; "models": model_delete (the namespace
+                     is the owner); nothing else
   login()         -> mandates Kaggle credentials in the environment
                      (workspace .env, loaded at startup) — the only login
                      route. Either credential kind works: KAGGLE_TOKEN (an
@@ -169,7 +169,7 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
             return [str(d.ref) for d in datasets if d]
         return None      # entity unknown here (e.g. Kaggle has no Spaces)
 
-    def _create(self, entity: str, name: str) -> str:
+    def _create(self, entity: str, namespace: str, name: str) -> str:
         """Kaggle creates nothing by name (see the BaseService contract):
         kernels appear via `execute jobs` (kernels_push), datasets and
         models via their folder-upload flows — so every entity errors out."""
@@ -177,22 +177,21 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
                  "by `execute jobs` (kernels_push), datasets/models by their "
                  "upload flows; nothing is created by name")
 
-    def _delete(self, entity: str, name: str) -> str:
-        """Delete <name> on Kaggle (see the BaseService contract).
+    def _delete(self, entity: str, namespace: str, name: str) -> str:
+        """Delete <namespace>/<name> on Kaggle (see the BaseService
+        contract).
 
         "jobs" -> kernels_delete, "datasets" -> dataset_delete, "models" ->
-        model_delete — a bare <name> gets the logged-in username prefixed
-        (matching how run() builds kernel refs); no_confirm skips the
-        library's interactive prompt (mlops never prompts). Spaces and
-        namespaces are not Kaggle concepts."""
-        api, user = self._api()
-        ref = name if "/" in name else f"{user}/{name}"
+        model_delete (<namespace> is the owner — usually the logged-in
+        username); no_confirm skips the library's interactive prompt (mlops
+        never prompts). Spaces and namespaces are not Kaggle concepts."""
+        api, _ = self._api()
+        ref = f"{namespace}/{name}"
         try:
             if entity == "jobs":
                 api.kernels_delete(ref, no_confirm=True)
             elif entity == "datasets":
-                owner, _, slug = ref.partition("/")
-                api.dataset_delete(owner, slug, no_confirm=True)
+                api.dataset_delete(namespace, name, no_confirm=True)
             elif entity == "models":
                 api.model_delete(ref, no_confirm=True)
             else:

@@ -179,44 +179,47 @@ class HuggingFaceService(BaseService):
                     for ns in self._list("namespaces")}
         return None                        # entity unknown to this service
 
-    def _create(self, entity: str, name: str) -> str:
-        """Create <name> on the Hub (see the BaseService contract).
+    def _create(self, entity: str, namespace: str, name: str) -> str:
+        """Create <namespace>/<name> on the Hub (see the BaseService
+        contract).
 
-        "models" / "spaces" / "datasets" -> create_repo (a bare name lands
-        in the user's namespace; Spaces get the Gradio SDK — the workspace
-        default). "jobs" cannot be created by name — they are submitted
-        from a runnable via `execute jobs`."""
+        "models" / "spaces" / "datasets" -> create_repo (Spaces get the
+        Gradio SDK — the workspace default). "jobs" cannot be created by
+        name — they are submitted from a runnable via `execute jobs`."""
         if entity in REPO_KINDS:
             repo_type = REPO_KINDS[entity][0]
-            kwargs = {"repo_id": name, "repo_type": repo_type}
+            repo_id = f"{namespace}/{name}"
+            kwargs = {"repo_id": repo_id, "repo_type": repo_type}
             if repo_type == "space":
                 kwargs["space_sdk"] = "gradio"
             try:
                 return str(self._hub().HfApi().create_repo(**kwargs))
             except Exception as exc:
-                sys.exit(f"Cannot create {repo_type} '{name}' on the Hub: {exc}")
+                sys.exit(f"Cannot create {repo_type} '{repo_id}' on the Hub: {exc}")
         sys.exit(f"Cannot create '{entity}' on huggingface — jobs are "
                  "submitted from a runnable via `execute jobs`, never "
                  "created by name")
 
-    def _delete(self, entity: str, name: str) -> str:
-        """Delete <name> on the Hub (see the BaseService contract).
+    def _delete(self, entity: str, namespace: str, name: str) -> str:
+        """Delete <namespace>/<name> on the Hub (see the BaseService
+        contract).
 
-        "models" / "spaces" / "datasets" -> delete_repo (a bare name means
-        the user's namespace). "jobs" -> cancel_job: a Hub Job cannot be
-        erased, so cancelling it is its deletion."""
+        "models" / "spaces" / "datasets" -> delete_repo. "jobs" ->
+        cancel_job in <namespace> (<name> is the job id): a Hub Job cannot
+        be erased, so cancelling it is its deletion."""
         api = self._hub().HfApi()
         if entity in REPO_KINDS:
             repo_type = REPO_KINDS[entity][0]
+            repo_id = f"{namespace}/{name}"
             try:
-                api.delete_repo(repo_id=name, repo_type=repo_type)
+                api.delete_repo(repo_id=repo_id, repo_type=repo_type)
             except Exception as exc:
-                sys.exit(f"Cannot delete {repo_type} '{name}' on the Hub: {exc}")
-            return name
+                sys.exit(f"Cannot delete {repo_type} '{repo_id}' on the Hub: {exc}")
+            return repo_id
         if entity == "jobs":
             try:
-                api.cancel_job(job_id=name)
+                api.cancel_job(job_id=name, namespace=namespace)
             except Exception as exc:
-                sys.exit(f"Cannot cancel job '{name}': {exc}")
+                sys.exit(f"Cannot cancel job '{name}' in '{namespace}': {exc}")
             return f"{name} (cancelled — Hub Jobs cannot be erased)"
         sys.exit(f"Cannot delete '{entity}' on huggingface — no such concept")

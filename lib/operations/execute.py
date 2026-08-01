@@ -51,7 +51,7 @@ def resolve_script(ns, model_name, type_, name):
     if not model_dir.is_dir():
         sys.exit(f"ERROR: model folder not found: hf/{ns}/models/{model_name} "
                  "(a git submodule — load it first: "
-                 f"load models {ns} {model_name})")
+                 f"load models huggingface {ns} {model_name})")
 
     def runnables(directory):
         if not directory.is_dir():

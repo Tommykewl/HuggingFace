@@ -1,8 +1,9 @@
-"""`load <entity> <namespace> <name>` — materialize a Hub repo locally as a
-git submodule under hf/. Validates the namespace (one of the account's, per
-`list namespaces`) and the repo's existence on the Hub, then `git submodule
-add`s it (or `update --init`s it when already registered from an earlier
-add) with GIT_LFS_SKIP_SMUDGE=1 so LFS payloads stay pointers."""
+"""`load <entity> <service> <namespace> <name>` — materialize a Hub repo
+locally as a git submodule under hf/. Validates the service (only
+huggingface hosts loadable git repos), the namespace (one of the account's,
+per `list namespaces`) and the repo's existence on the Hub, then `git
+submodule add`s it (or `update --init`s it when already registered from an
+earlier add) with GIT_LFS_SKIP_SMUDGE=1 so LFS payloads stay pointers."""
 
 import sys
 
@@ -22,45 +23,48 @@ def hub():
     return huggingface_hub
 
 
-def check_account_namespace(ns):
-    """Check 1: <namespace> must be one of the account's namespaces."""
-    namespaces = load_service("huggingface").list("namespaces")
+def check_account_namespace(service, ns):
+    """Check 1: <namespace> must be one of the account's namespaces on the
+    given service."""
+    namespaces = load_service(service).list("namespaces")
     if ns not in namespaces:
-        sys.exit(f"ERROR: '{ns}' is not a namespace of this account "
-                 f"({', '.join(namespaces)}) — see: list namespaces")
+        sys.exit(f"ERROR: '{ns}' is not a namespace of this account on "
+                 f"{service} ({', '.join(namespaces)}) — see: list namespaces")
 
 
 class LoadOperation(RepoOperation):
-    """`load <entity> <namespace> <name>` — materialize the Hub repo as a
-    git submodule under hf/."""
+    """`load <entity> <service> <namespace> <name>` — materialize the Hub
+    repo as a git submodule under hf/."""
 
     _helptext = [
-        ("load models <namespace> <model_name>",
-         "Load the Hub model repo <namespace>/<model_name> locally as a git\n"
-         "submodule at hf/<namespace>/models/<model_name>. Checks that\n"
-         "<namespace> is one of the account's namespaces (see `list\n"
-         "namespaces`) and that the model exists on the Hub, then `git\n"
+        ("load models <service> <namespace> <model_name>",
+         "Load the model repo <namespace>/<model_name> of <service> locally\n"
+         "as a git submodule at hf/<namespace>/models/<model_name>. Only\n"
+         "huggingface hosts loadable git repos (other services error out).\n"
+         "Checks that <namespace> is one of the account's namespaces (see\n"
+         "`list namespaces`) and that the model exists on the Hub, then `git\n"
          "submodule add`s it — or `git submodule update --init`s it when\n"
          "already registered — with GIT_LFS_SKIP_SMUDGE=1, so weights stay as\n"
          "LFS pointers.\n"
-         "Example: load models smallTech rtdetr-sportsmot"),
-        ("load spaces <namespace> <space_name>",
-         "Load the Hub Space repo <namespace>/<space_name> locally as a git\n"
-         "submodule at hf/<namespace>/spaces/<space_name>. Same checks and\n"
-         "submodule setup as `load models`.\n"
-         "Example: load spaces Tamoghna1995 rtdetr-sportsmot"),
-        ("load datasets <namespace> <dataset_name>",
-         "Load the Hub dataset repo <namespace>/<dataset_name> locally as a git\n"
-         "submodule at hf/<namespace>/datasets/<dataset_name>. Same checks and\n"
-         "submodule setup as `load models` (LFS data stays as pointers)."),
+         "Example: load models huggingface smallTech rtdetr-sportsmot"),
+        ("load spaces <service> <namespace> <space_name>",
+         "Load the Space repo <namespace>/<space_name> of <service> locally\n"
+         "as a git submodule at hf/<namespace>/spaces/<space_name>. Same\n"
+         "checks and submodule setup as `load models`.\n"
+         "Example: load spaces huggingface Tamoghna1995 rtdetr-sportsmot"),
+        ("load datasets <service> <namespace> <dataset_name>",
+         "Load the dataset repo <namespace>/<dataset_name> of <service>\n"
+         "locally as a git submodule at hf/<namespace>/datasets/<dataset_name>.\n"
+         "Same checks and submodule setup as `load models` (LFS data stays\n"
+         "as pointers)."),
     ]
 
     def _run(self, mandatory, optional, vargs):
         if optional or vargs:
             raise ValueError(f"unexpected arguments: {' '.join((*optional, *vargs))}")
-        entity, ns, name, rel, target = self._target(mandatory)
+        entity, service, ns, name, rel, target = self._target(mandatory)
         repo_type, url_prefix = REPO_KINDS[entity]
-        check_account_namespace(ns)
+        check_account_namespace(service, ns)
         # Check 2: the repo must exist on the Hub before anything is cloned.
         if not hub().HfApi().repo_exists(f"{ns}/{name}", repo_type=repo_type):
             sys.exit(f"ERROR: {repo_type} '{ns}/{name}' does not exist on the "

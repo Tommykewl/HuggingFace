@@ -13,24 +13,27 @@ defaults to `help`:
                           the account's <entity> on every reachable service;
                           each Hub repo is marked loaded/not-loaded (loaded =
                           its submodule is initialized under hf/)
-    load <models|spaces|datasets> <namespace> <name>
-                          materialize the Hub repo as a git submodule under
-                          hf/<namespace>/<entity>/<name>
-    unload <models|spaces|datasets> <namespace> <name>
+    load <models|spaces|datasets> <service> <namespace> <name>
+                          materialize the repo as a git submodule under
+                          hf/<namespace>/<entity>/<name> (only huggingface
+                          hosts loadable git repos)
+    unload <models|spaces|datasets> <service> <namespace> <name> [-f]
                           deinit the submodule (empties its folder locally;
-                          it stays registered and can be loaded again)
-    git <models|spaces|datasets> <namespace> <name> <git args...>
+                          it stays registered and can be loaded again);
+                          -f removes it entirely (gitlink, .gitmodules
+                          entry, .git/modules cache)
+    git <models|spaces|datasets> <service> <namespace> <name> <git args...>
                           proxy a git command to that submodule
                           (git -C hf/<namespace>/<entity>/<name> <git args...>)
     execute jobs <namespace>/<model>/<type>/<script_name>
                           submit a runnable to the service that hosts it
     status jobs <run_id> [service]
                           status of one run (service defaults to huggingface)
-    create <models|spaces|datasets|jobs> <service> <name>
-                          create the entity on the remote service (a service
-                          that cannot create it errors out saying so)
-    delete <models|spaces|datasets|jobs> <service> <name>
-                          delete the entity on the remote service —
+    create <models|spaces|datasets|jobs> <service> <namespace> <name>
+                          create <namespace>/<name> on the remote service (a
+                          service that cannot create it errors out saying so)
+    delete <models|spaces|datasets|jobs> <service> <namespace> <name>
+                          delete <namespace>/<name> on the remote service —
                           DESTRUCTIVE and remote-only (local submodules are
                           removed via `unload`, not here)
     help [operation [entity]]

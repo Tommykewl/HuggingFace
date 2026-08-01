@@ -21,7 +21,7 @@ HF model repo, `hf/<namespace>/spaces/<space>/` of the HF Space repo, and
 `hf/<namespace>/datasets/<dataset>/` of the HF dataset repo (cloned with
 `GIT_LFS_SKIP_SMUDGE=1` — weights stay as LFS pointers, never materialized
 locally; gated repos need HF git credentials). Init only the submodules you
-need — via the launcher's `load|unload <models|spaces|datasets>
+need — via the launcher's `load|unload <models|spaces|datasets> <service>
 <namespace> <name>` operations (`list namespaces` shows the account's namespaces and
 which are loaded). Launcher targets keep the `<namespace>/<model>/...`
 syntax; lib/main.py maps them to `hf/<namespace>/models/<model>/`. Stage subfolders — `data-preparation/`,
@@ -69,14 +69,16 @@ All scripts must be self-explanatory via comments.
 - Launcher: `./mlops.sh <operation> <entity> [args]` (Windows:
   `.\mlops.ps1`) — operations are verbs, the entity is their first
   mandatory argument: `list <namespaces|models|spaces|datasets|jobs>`;
-  `load|unload <models|spaces|datasets> <namespace> <name>` (materialize /
-  deinit the Hub repo's submodule under `hf/`); `git <models|spaces|datasets>
-  <namespace> <name> <git args...>` (proxy a git command to that submodule);
-  `execute jobs <namespace>/<model>/<type>/<script_name>`;
+  `load|unload <models|spaces|datasets> <service> <namespace> <name>`
+  (materialize / deinit the Hub repo's submodule under `hf/`; only
+  huggingface hosts loadable git repos); `git <models|spaces|datasets>
+  <service> <namespace> <name> <git args...>` (proxy a git command to that
+  submodule); `execute jobs <namespace>/<model>/<type>/<script_name>`;
   `status jobs <run_id> [service]`; `create|delete
-  <models|spaces|datasets|jobs> <service> <name>` (create/delete the entity
-  on the remote service; delete is destructive and remote-only — local
-  submodules are removed via `unload`); and `help [operation [entity]]`.
+  <models|spaces|datasets|jobs> <service> <namespace> <name>` (create/delete
+  `<namespace>/<name>` on the remote service; delete is destructive and
+  remote-only — local submodules are removed via `unload`); and
+  `help [operation [entity]]`.
   The wrappers only
   check prerequisites (git, python), install uv, and `uv sync`; `lib/main.py`
   for `execute jobs` resolves the target (model folder first, then

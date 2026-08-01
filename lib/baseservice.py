@@ -35,15 +35,16 @@ _implementation):
         (e.g. Spaces on Kaggle) returns None — lib/main.py's listings sweep every
         service and skip the Nones. None means "not a thing here"; an empty
         list/dict means "a thing here, and the account has none".
-  * create(entity, name) -> str
-        Create <name> as a new <entity> on the service (e.g. a Hub model
-        repo) and return its id/url. An entity the service cannot create
-        MUST sys.exit with an error saying so (never a silent no-op) —
-        same for a creation the service rejects.
-  * delete(entity, name) -> str
-        Delete the <entity> named <name> on the service and return its id.
-        Same error rule as create(): impossible or rejected deletions
-        sys.exit with an error.
+  * create(entity, namespace, name) -> str
+        Create <name> as a new <entity> under <namespace> on the service
+        (e.g. a Hub model repo <namespace>/<name>) and return its id/url.
+        An entity the service cannot create MUST sys.exit with an error
+        saying so (never a silent no-op) — same for a creation the service
+        rejects.
+  * delete(entity, namespace, name) -> str
+        Delete the <entity> <namespace>/<name> on the service and return
+        its id. Same error rule as create(): impossible or rejected
+        deletions sys.exit with an error.
 
 Authentication — every public method calls login() first. login() is
 service-specific and therefore abstract here (each SDK names and consumes
@@ -97,17 +98,18 @@ class BaseService(ABC):
         self.login()
         return self._list(entity)
 
-    def create(self, entity: str, name: str) -> str:
-        """Create <name> as a new <entity> on the service — see the module
-        docstring for the contract; errors out when it cannot."""
+    def create(self, entity: str, namespace: str, name: str) -> str:
+        """Create <name> as a new <entity> under <namespace> on the service
+        — see the module docstring for the contract; errors out when it
+        cannot."""
         self.login()
-        return self._create(entity, name)
+        return self._create(entity, namespace, name)
 
-    def delete(self, entity: str, name: str) -> str:
-        """Delete the <entity> named <name> on the service — see the module
-        docstring for the contract; errors out when it cannot."""
+    def delete(self, entity: str, namespace: str, name: str) -> str:
+        """Delete the <entity> <namespace>/<name> on the service — see the
+        module docstring for the contract; errors out when it cannot."""
         self.login()
-        return self._delete(entity, name)
+        return self._delete(entity, namespace, name)
 
     # -- authentication ------------------------------------------------------
     @abstractmethod
@@ -136,10 +138,10 @@ class BaseService(ABC):
     def _list(self, entity: str): ...
 
     @abstractmethod
-    def _create(self, entity: str, name: str) -> str: ...
+    def _create(self, entity: str, namespace: str, name: str) -> str: ...
 
     @abstractmethod
-    def _delete(self, entity: str, name: str) -> str: ...
+    def _delete(self, entity: str, namespace: str, name: str) -> str: ...
 
     # -- shared helpers (protected: for service implementations only) --------
     def _load_config(self, script: Path, name: str) -> dict:
