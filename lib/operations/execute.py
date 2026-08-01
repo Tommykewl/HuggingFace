@@ -112,7 +112,10 @@ class ExecuteOperation(BaseOperation):
          "The script is resolved in hf/<namespace>/models/<model>/<type>/ first\n"
          "(first-party -> Hugging Face Jobs), then in every external service the\n"
          "model's externals.json declares for that operation; zero or multiple\n"
-         "matches are errors. Prints a run id for `status jobs`.\n"
+         "matches are errors. Prints a run id for `status jobs`. A run whose\n"
+         "script resolved from a job folder (<service>/<ns>/jobs/<job>/...)\n"
+         "is recorded into that job's staging: .runs/<run_id>/ gets the\n"
+         "script + config snapshot (output.log follows via `status jobs`).\n"
          "Example: execute jobs smallTech/rtdetr-sportsmot/training/smoketest"),
     ]
 
@@ -126,5 +129,14 @@ class ExecuteOperation(BaseOperation):
                              "acts on: jobs")
         ns, model_name, type_, name = parse_target(target)
         service, script = resolve_script(ns, model_name, type_, name)
-        run_id = load_service(service).run(script, f"{ns}/{model_name}", type_, name)
+        svc = load_service(service)
+        run_id = svc.run(script, f"{ns}/{model_name}", type_, name)
         print(f"run id: {run_id}   (use it with: status jobs {run_id} {service})")
+        # Job-resolved runs are recorded into the job's staging storage:
+        # .runs/<run_id>/ gets a snapshot of the executed script + config
+        # (output.log follows via `status jobs` once the run is terminal).
+        # A script path <service>/<namespace>/jobs/<job>/... IS the job
+        # membership; first-party scripts (model repo) belong to no job.
+        parts = script.relative_to(ROOT).parts
+        if len(parts) > 3 and parts[2] == "jobs":
+            print(svc.record_run(parts[1], parts[3], run_id, script))

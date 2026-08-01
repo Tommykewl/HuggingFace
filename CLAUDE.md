@@ -74,6 +74,17 @@ committed). `list jobs` lists the staging entities; run instances remain
 the business of `execute` / `status jobs`. Load a kaggle job before
 `execute`-ing its scripts — resolution reads the local cache.
 
+A job folder's format: `README.md` at root; one folder per stage
+(`training/`, `evaluation/`, `testing/`, …) holding the runnables; and
+`.runs/<run_id>/` — GENERATED run records, each a snapshot of the executed
+script + its config.json + `output.log`. The `.runs` tree's only source of
+truth is the actual run: mlops writes it programmatically (`execute jobs`
+snapshots script+config into the staging at submission; `status jobs`
+writes output.log once the run is terminal — only job-resolved runs, i.e.
+scripts under `<service>/<ns>/jobs/<job>/`), manual local edits are
+ignored and never synced. It IS downloaded with `load jobs` so runs can
+be inspected.
+
 All scripts must be self-explanatory via comments.
 
 ## Conventions

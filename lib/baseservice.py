@@ -58,6 +58,18 @@ _implementation):
         the default deinit-only unload into a complete removal; entities
         whose unload is already just a local delete ignore it. Same error
         rule as create().
+  * record_run(namespace, job_name, run_id, script) -> str
+        Record a run into the job's staging storage: write
+        .runs/<run_id>/ with a snapshot of the executed script and its
+        adjacent config.json. Called by `execute jobs` right after
+        submission — the .runs tree is GENERATED, its source of truth is
+        the actual run, and it is only ever written programmatically by
+        mlops (local edits are ignored and never synced).
+  * sync_logs(run_id) -> str | None
+        Complete a run's .runs/<run_id>/ entry with its output.log once
+        the run is terminal. Called by `status jobs`; returns a summary,
+        or None when there is nothing to do (run still active, or the run
+        maps to no job of this service).
 
 Authentication — every public method calls login() first. login() is
 service-specific and therefore abstract here (each SDK names and consumes
@@ -139,6 +151,20 @@ class BaseService(ABC):
         self.login()
         return self._unload(entity, namespace, name, force)
 
+    def record_run(self, namespace: str, job_name: str, run_id: str,
+                   script: Path) -> str:
+        """Record a submitted run into the job's staging storage
+        (.runs/<run_id>/ snapshot) — see the module docstring for the
+        contract."""
+        self.login()
+        return self._record_run(namespace, job_name, run_id, script)
+
+    def sync_logs(self, run_id: str):
+        """Write a terminal run's output.log into its .runs/<run_id>/
+        staging entry — see the module docstring for the contract."""
+        self.login()
+        return self._sync_logs(run_id)
+
     # -- authentication ------------------------------------------------------
     @abstractmethod
     def login(self) -> None:
@@ -177,6 +203,13 @@ class BaseService(ABC):
     @abstractmethod
     def _unload(self, entity: str, namespace: str, name: str,
                 force: bool = False) -> str: ...
+
+    @abstractmethod
+    def _record_run(self, namespace: str, job_name: str, run_id: str,
+                    script: Path) -> str: ...
+
+    @abstractmethod
+    def _sync_logs(self, run_id: str): ...
 
     # -- shared helpers (protected: for service implementations only) --------
     def _load_config(self, script: Path, name: str) -> dict:

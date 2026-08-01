@@ -16,6 +16,8 @@ class StatusOperation(BaseOperation):
          "Status of one run, identified by the id `execute jobs` printed.\n"
          "  <run_id>   Hugging Face: the Job id; Kaggle: <user>/<kernel-slug>\n"
          "  [service]  the service that owns the run — defaults to huggingface\n"
+         "A terminal job-resolved run also gets its output.log written into\n"
+         "the job staging's .runs/<run_id>/ entry (generated — mlops-only).\n"
          "Example: status jobs my-job-id | status jobs me/training-index kaggle"),
     ]
 
@@ -27,5 +29,13 @@ class StatusOperation(BaseOperation):
             raise ValueError(f"unknown entity '{entity}' — `status` only "
                              "acts on: jobs")
         service_name = optional[0] if optional else "huggingface"
-        status = load_service(service_name).get_status(run_id)
+        service = load_service(service_name)
+        status = service.get_status(run_id)
         print(f"[{service_name}] {run_id}: {status}")
+        # Terminal job-resolved runs get their output.log written into the
+        # job staging's .runs/<run_id>/ entry (the .runs tree is generated
+        # — only mlops writes it). None = still active, or the run maps to
+        # no staged job.
+        synced = service.sync_logs(run_id)
+        if synced:
+            print(synced)

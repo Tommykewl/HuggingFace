@@ -33,6 +33,7 @@ Implements the full BaseService contract:
 
 import inspect
 import os
+import re
 import shutil
 import sys
 
@@ -221,8 +222,18 @@ class HuggingFaceService(BaseService):
             # jobs marker — see JOBS_BUCKET_PREFIX) holding the job's
             # artifacts — the source of truth `load jobs` pulls from.
             bucket_id = f"{namespace}/{JOBS_BUCKET_PREFIX}{name}"
+            api = self._hub().HfApi()
             try:
-                self._hub().HfApi().create_bucket(bucket_id, private=True)
+                api.create_bucket(bucket_id, private=True)
+                # Scaffold the job folder format: README.md at root (stage
+                # folders appear with their scripts; .runs/ at first run).
+                readme = (f"# {name}\n\nmlops job staging. Layout: README.md; "
+                          "one folder per stage (training/, evaluation/, ...) "
+                          "holding the runnables; .runs/<run_id>/ — GENERATED "
+                          "run records (script snapshot + config + "
+                          "output.log), written only by mlops.\n")
+                api.batch_bucket_files(bucket_id,
+                                       add=[(readme.encode(), "README.md")])
             except Exception as exc:
                 sys.exit(f"Cannot create job staging bucket '{bucket_id}': {exc}")
             return f"{namespace}/{name} (staging bucket {bucket_id})"
@@ -374,6 +385,60 @@ class HuggingFaceService(BaseService):
             shutil.rmtree(target)
             return f"{rel} (deleted locally — the staging bucket keeps the artifacts)"
         sys.exit(f"Cannot unload '{entity}' on huggingface — no such concept")
+
+    # -- run recording (guarded by BaseService.record_run/sync_logs) ---------
+    def _record_run(self, namespace, job_name, run_id, script):
+        """Snapshot a submitted run into the staging bucket's .runs/ (see
+        the BaseService contract): the executed script + its adjacent
+        config.json under .runs/<run_id>/. (No current flow resolves an
+        HF-run script from a job folder — first-party scripts live in the
+        model repo — so this records only once jobs host runnables.)"""
+        api = self._hub().HfApi()
+        bucket_id = f"{namespace}/{JOBS_BUCKET_PREFIX}{job_name}"
+        add = [(script, f".runs/{run_id}/{script.name}")]
+        config = script.parent / (script.name.split(".")[0] + ".config.json")
+        if config.is_file():
+            add.append((config, f".runs/{run_id}/{config.name}"))
+        try:
+            api.batch_bucket_files(bucket_id, add=add)
+        except Exception as exc:
+            return (f"run NOT recorded: cannot write to staging bucket "
+                    f"'{bucket_id}': {exc}")
+        return f"run recorded: {namespace}/{job_name} .runs/{run_id}/"
+
+    def _sync_logs(self, run_id):
+        """Write a terminal Hub Job run's log as output.log into its
+        .runs/<run_id>/ staging entry (see the BaseService contract).
+        Returns None while the run is active or when it maps to no job:
+        run records carry no job-entity link, so the job is recognized
+        from a 'hf/<ns>/jobs/<name>/' path in the run's command — absent
+        for first-party (model repo) scripts."""
+        api = self._hub().HfApi()
+        try:
+            job = api.inspect_job(job_id=run_id)
+        except Exception as exc:
+            sys.exit(f"Cannot inspect job '{run_id}': {exc}")
+        status = getattr(job, "status", None)
+        stage = str(getattr(status, "stage", status) or "").upper()
+        if stage not in ("COMPLETED", "ERROR", "CANCELED", "CANCELLED"):
+            return None                    # still active — logs incomplete
+        command = " ".join(map(str, getattr(job, "command", None) or []))
+        match = re.search(r"hf/([^/\s]+)/jobs/([^/\s]+)/", command)
+        if not match:
+            return None                    # run belongs to no staged job
+        namespace, job_name = match.group(1), match.group(2)
+        bucket_id = f"{namespace}/{JOBS_BUCKET_PREFIX}{job_name}"
+        try:
+            content = "\n".join(str(line)
+                                for line in api.fetch_job_logs(job_id=run_id))
+            api.batch_bucket_files(
+                bucket_id,
+                add=[(content.encode(), f".runs/{run_id}/output.log")])
+        except Exception as exc:
+            # Non-fatal: the caller's status query succeeded — the .runs
+            # entry completes on a later `status jobs`.
+            return f"output.log NOT synced for '{run_id}': {exc}"
+        return f"synced: {namespace}/{job_name} .runs/{run_id}/output.log"
 
     @staticmethod
     def _refuse_active_runs(api, name, verb):

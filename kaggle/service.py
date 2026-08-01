@@ -218,8 +218,12 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
                 json.dump({"title": name, "id": ref,
                            "subtitle": f"{JOBS_MARKER} staging artifacts",
                            "licenses": [{"name": "CC0-1.0"}]}, fh)
-            with open(Path(stage) / "mlops-jobs.json", "w") as fh:
-                json.dump({"job": name, "marker": JOBS_MARKER}, fh)
+            with open(Path(stage) / "README.md", "w") as fh:
+                fh.write(f"# {name}\n\nmlops job staging. Layout: README.md; "
+                         "one folder per stage (training/, evaluation/, ...) "
+                         "holding the runnables; .runs/<run_id>/ — GENERATED "
+                         "run records (script snapshot + config + "
+                         "output.log), written only by mlops.\n")
             try:
                 response = api.dataset_create_new(str(stage), public=False,
                                                   quiet=True, dir_mode="zip")
@@ -340,6 +344,86 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
         shutil.rmtree(target)
         return (f"{rel} (deleted locally — kaggle keeps the content; "
                 f"`load {entity}` restores it)")
+
+    # -- run recording (guarded by BaseService.record_run/sync_logs) ---------
+    def _staging_version(self, api, namespace, name, add_files, notes):
+        """Publish a new version of job <name>'s staging dataset: its
+        CURRENT remote content plus add_files ({relpath: Path | bytes}).
+        Sourced from a fresh staging download in a temp dir — NEVER from
+        the local kaggle/<ns>/jobs cache: .runs is generated, and manual
+        local edits must never reach the staging."""
+        ref = f"{namespace}/{name}"
+        with tempfile.TemporaryDirectory() as stage:
+            api.dataset_download_files(ref, path=stage, unzip=True, quiet=True)
+            for relpath, content in add_files.items():
+                dest = Path(stage) / relpath
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                if isinstance(content, bytes):
+                    dest.write_bytes(content)
+                else:
+                    shutil.copy(content, dest)
+            with open(Path(stage) / "dataset-metadata.json", "w") as fh:
+                json.dump({"title": name, "id": ref,
+                           "subtitle": f"{JOBS_MARKER} staging artifacts",
+                           "licenses": [{"name": "CC0-1.0"}]}, fh)
+            api.dataset_create_version(str(stage), version_notes=notes,
+                                       quiet=True, dir_mode="zip")
+
+    def _record_run(self, namespace, job_name, run_id, script):
+        """Snapshot a submitted run into the staging's .runs/ (see the
+        BaseService contract). The run folder is named by the kernel slug
+        (kaggle run ids are '<user>/<slug>'; the user is constant), and
+        holds the executed script + its adjacent config.json. Re-pushing
+        the same kernel reuses the slug, so the snapshot tracks the latest
+        push — matching Kaggle's one-kernel-many-versions model."""
+        api, _ = self._api()
+        if f"{namespace}/{job_name}" not in {str(d.ref)
+                                             for d in self._jobs_datasets(api)}:
+            return (f"run NOT recorded: no staging dataset for job "
+                    f"'{namespace}/{job_name}' — create jobs first")
+        slug = run_id.rpartition("/")[2]
+        add = {f".runs/{slug}/{script.name}": script}
+        config = script.parent / (script.name.split(".")[0] + ".config.json")
+        if config.is_file():
+            add[f".runs/{slug}/{config.name}"] = config
+        self._staging_version(api, namespace, job_name, add,
+                              f"record run {slug}")
+        return f"run recorded: {namespace}/{job_name} .runs/{slug}/"
+
+    def _sync_logs(self, run_id):
+        """Write a terminal kernel run's log as output.log into its
+        .runs/<slug>/ staging entry (see the BaseService contract).
+        Returns None while the kernel is still queued/running or when its
+        slug maps to no job staging dataset ('<job name>-...')."""
+        api, user = self._api()
+        ref = run_id if "/" in run_id else f"{user}/{run_id}"
+        status = str(getattr(api.kernels_status(ref), "status", "")).lower()
+        if status in ("queued", "running"):
+            return None
+        slug = ref.rpartition("/")[2]
+        job_name = next(
+            (str(d.ref).partition("/")[2] for d in self._jobs_datasets(api)
+             if slug.startswith(str(d.ref).partition("/")[2] + "-")), None)
+        if job_name is None:
+            return None                    # run belongs to no staged job
+        with tempfile.TemporaryDirectory() as out:
+            try:
+                # file_pattern (a REGEX) limits the download to the run log
+                # — without it kernels_output pulls EVERY output artifact
+                # (a training kernel's saved models can be huge).
+                api.kernels_output(ref, path=out, file_pattern=r".*\.log$",
+                                   quiet=True)
+            except Exception as exc:
+                # Non-fatal: the caller's status query succeeded — a log
+                # fetch hiccup (rate limit, transient API error) just means
+                # the .runs entry completes on a later `status jobs`.
+                return f"output.log NOT synced for '{ref}': {exc}"
+            logs = sorted(Path(out).glob("*.log"))
+            content = logs[0].read_bytes() if logs else b""
+        self._staging_version(api, user, job_name,
+                              {f".runs/{slug}/output.log": content},
+                              f"output.log for {slug}")
+        return f"synced: {user}/{job_name} .runs/{slug}/output.log"
 
     def _refuse_active_runs(self, name, verb):
         """Block unload/delete of job <name> while any of its kernels is
