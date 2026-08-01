@@ -114,21 +114,17 @@ def load_service(service):
     return classes[0](ROOT)
 
 
-def registered_services():
-    """Names of every registered service: huggingface (hf/service.py) first,
-    then each external that ships a <service>/service.py at the repo root."""
+def reachable_services():
+    """Yield (name, instance) for every registered service — huggingface
+    (hf/service.py) first, then each external that ships a
+    <service>/service.py at the repo root — that has usable credentials;
+    the rest are noted and skipped, so one missing login never fails a
+    whole sweep."""
     names = ["huggingface"]
     names += sorted(d.name for d in ROOT.iterdir()
                     if d.is_dir() and d.name != "hf"
                     and (d / "service.py").is_file())
-    return names
-
-
-def reachable_services():
-    """Yield (name, instance) for every registered service that has usable
-    credentials; the rest are noted and skipped, so one missing login never
-    fails a whole sweep."""
-    for name in registered_services():
+    for name in names:
         service = load_service(name)
         if service.is_logged_in():
             yield name, service
