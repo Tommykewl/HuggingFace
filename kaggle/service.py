@@ -8,6 +8,11 @@ Implements the full BaseService contract:
   get_status(id)  -> kernels_status: QUEUED / RUNNING / COMPLETE / ERROR ...
   list(entity)    -> "jobs": kernels_list(mine=True);
                      "datasets": dataset_list(mine=True); nothing else
+  create(...)     -> always errors: Kaggle creates nothing by name (kernels
+                     appear via kernels_push, datasets/models via uploads)
+  delete(entity, name) -> "jobs": kernels_delete; "datasets":
+                     dataset_delete; "models": model_delete (bare names get
+                     the username prefixed); nothing else
   login()         -> mandates Kaggle credentials in the environment
                      (workspace .env, loaded at startup) — the only login
                      route. Either credential kind works: KAGGLE_TOKEN (an
@@ -158,6 +163,40 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
             datasets = api.dataset_list(mine=True) or []
             return [str(d.ref) for d in datasets if d]
         return None  # entity unknown here (e.g. Kaggle has no Spaces/namespaces)
+
+    def _create(self, entity: str, name: str) -> str:
+        """Kaggle creates nothing by name (see the BaseService contract):
+        kernels appear via `execute jobs` (kernels_push), datasets and
+        models via their folder-upload flows — so every entity errors out."""
+        sys.exit(f"Cannot create '{entity}' on kaggle — kernels are created "
+                 "by `execute jobs` (kernels_push), datasets/models by their "
+                 "upload flows; nothing is created by name")
+
+    def _delete(self, entity: str, name: str) -> str:
+        """Delete <name> on Kaggle (see the BaseService contract).
+
+        "jobs" -> kernels_delete, "datasets" -> dataset_delete, "models" ->
+        model_delete — a bare <name> gets the logged-in username prefixed
+        (matching how run() builds kernel refs); no_confirm skips the
+        library's interactive prompt (mlops never prompts). Spaces and
+        namespaces are not Kaggle concepts."""
+        api, user = self._api()
+        ref = name if "/" in name else f"{user}/{name}"
+        try:
+            if entity == "jobs":
+                api.kernels_delete(ref, no_confirm=True)
+            elif entity == "datasets":
+                owner, _, slug = ref.partition("/")
+                api.dataset_delete(owner, slug, no_confirm=True)
+            elif entity == "models":
+                api.model_delete(ref, no_confirm=True)
+            else:
+                sys.exit(f"Cannot delete '{entity}' on kaggle — no such concept")
+        except SystemExit:
+            raise
+        except Exception as exc:
+            sys.exit(f"Cannot delete {entity} '{ref}' on kaggle: {exc}")
+        return ref
 
     # -- helpers ------------------------------------------------------------
     def _setup(self) -> None:

@@ -10,11 +10,16 @@ Implements the full BaseService contract:
   run()           -> run id: the Hugging Face Job id (submits first-party
                      scripts as Hugging Face Jobs via HfApi.run_uv_job)
   get_status(id)  -> inspect_job(job_id): the job's stage
-  list(kind)      -> the single listing method; beyond the contract's
-                     "runs" (list_jobs) it supports the Hub-only kinds
+  list(entity)    -> the single listing method; beyond the contract's
+                     "jobs" (list_jobs) it supports the Hub-only entities
                      "models" / "spaces" / "datasets" ({namespace: [ids]}
                      per account namespace) and "namespaces" (the
                      account's user + orgs)
+  create(entity, name) -> create_repo for the repo entities (Spaces get
+                     the Gradio SDK); jobs error out (submitted via
+                     `execute jobs`, never created by name)
+  delete(entity, name) -> delete_repo for the repo entities; "jobs"
+                     cancels the Hub Job (they cannot be erased)
   login()         -> mandates HF_TOKEN in the environment (workspace
                      .env, loaded by lib/main.py at startup) — the only login
                      route
@@ -25,6 +30,7 @@ import os
 import sys
 
 from lib.baseservice import BaseService
+from lib.config import REPO_KINDS
 
 
 def hub():
@@ -143,32 +149,74 @@ class HuggingFaceService(BaseService):
         status = getattr(job, "status", None)
         return str(getattr(status, "stage", status))
 
-    def _list(self, kind):
+    def _list(self, entity: str):
         """The single listing implementation (see the BaseService contract).
 
-        "runs" -> the current user's Hugging Face Jobs, newest first;
+        "jobs" -> the current user's Hugging Face Jobs, newest first;
         "namespaces" -> the account's namespaces (the user + every org);
         "models" / "spaces" / "datasets" -> {namespace: [repo ids]} for
         every namespace of the account — one branch for all three, since
         the HfApi calls differ only in name (list_models / list_spaces /
         list_datasets)."""
         api = self._hub().HfApi()
-        if kind == "runs":
-            runs = []
+        if entity == "jobs":
+            jobs = []
             for job in api.list_jobs():
                 status = getattr(job, "status", None)
                 command = getattr(job, "command", None) or []
-                runs.append({"id": str(getattr(job, "id", "")),
+                jobs.append({"id": str(getattr(job, "id", "")),
                              "title": " ".join(map(str, command))[:80],
                              "status": str(getattr(status, "stage", status))})
-            return runs
-        if kind == "namespaces":
+            return jobs
+        if entity == "namespaces":
             who = api.whoami()
             names = [who.get("name")]
             names += [org.get("name") for org in who.get("orgs", [])]
             return [n for n in names if n]
-        if kind in ("models", "spaces", "datasets"):
-            list_repos = getattr(api, f"list_{kind}")
+        if entity in ("models", "spaces", "datasets"):
+            list_repos = getattr(api, f"list_{entity}")
             return {ns: [str(r.id) for r in list_repos(author=ns)]
                     for ns in self._list("namespaces")}
-        return None                        # kind unknown to this service
+        return None                        # entity unknown to this service
+
+    def _create(self, entity: str, name: str) -> str:
+        """Create <name> on the Hub (see the BaseService contract).
+
+        "models" / "spaces" / "datasets" -> create_repo (a bare name lands
+        in the user's namespace; Spaces get the Gradio SDK — the workspace
+        default). "jobs" cannot be created by name — they are submitted
+        from a runnable via `execute jobs`."""
+        if entity in REPO_KINDS:
+            repo_type = REPO_KINDS[entity][0]
+            kwargs = {"repo_id": name, "repo_type": repo_type}
+            if repo_type == "space":
+                kwargs["space_sdk"] = "gradio"
+            try:
+                return str(self._hub().HfApi().create_repo(**kwargs))
+            except Exception as exc:
+                sys.exit(f"Cannot create {repo_type} '{name}' on the Hub: {exc}")
+        sys.exit(f"Cannot create '{entity}' on huggingface — jobs are "
+                 "submitted from a runnable via `execute jobs`, never "
+                 "created by name")
+
+    def _delete(self, entity: str, name: str) -> str:
+        """Delete <name> on the Hub (see the BaseService contract).
+
+        "models" / "spaces" / "datasets" -> delete_repo (a bare name means
+        the user's namespace). "jobs" -> cancel_job: a Hub Job cannot be
+        erased, so cancelling it is its deletion."""
+        api = self._hub().HfApi()
+        if entity in REPO_KINDS:
+            repo_type = REPO_KINDS[entity][0]
+            try:
+                api.delete_repo(repo_id=name, repo_type=repo_type)
+            except Exception as exc:
+                sys.exit(f"Cannot delete {repo_type} '{name}' on the Hub: {exc}")
+            return name
+        if entity == "jobs":
+            try:
+                api.cancel_job(job_id=name)
+            except Exception as exc:
+                sys.exit(f"Cannot cancel job '{name}': {exc}")
+            return f"{name} (cancelled — Hub Jobs cannot be erased)"
+        sys.exit(f"Cannot delete '{entity}' on huggingface — no such concept")

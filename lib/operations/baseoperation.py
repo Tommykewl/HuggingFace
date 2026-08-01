@@ -2,7 +2,7 @@
 
 An *operation* is one verb of the launcher grammar
 (`<operation> <entity> [...mandatory] [...optional] [...vargs]`) — list,
-load, unload, git, execute, status. The ENTITY it acts on (namespaces,
+load, unload, git, execute, status, create, delete. The ENTITY it acts on (namespaces,
 models, spaces, datasets, jobs) is its first mandatory argument, validated
 inside _run like every other argument. Each operation is a class extending
 BaseOperation — the class name says which verb it is — instantiated once in

@@ -73,7 +73,10 @@ All scripts must be self-explanatory via comments.
   deinit the Hub repo's submodule under `hf/`); `git <models|spaces|datasets>
   <namespace> <name> <git args...>` (proxy a git command to that submodule);
   `execute jobs <namespace>/<model>/<type>/<script_name>`;
-  `status jobs <run_id> [service]`; and `help [operation [entity]]`.
+  `status jobs <run_id> [service]`; `create|delete
+  <models|spaces|datasets|jobs> <service> <name>` (create/delete the entity
+  on the remote service; delete is destructive and remote-only — local
+  submodules are removed via `unload`); and `help [operation [entity]]`.
   The wrappers only
   check prerequisites (git, python), install uv, and `uv sync`; `lib/main.py`
   for `execute jobs` resolves the target (model folder first, then

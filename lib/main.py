@@ -26,6 +26,13 @@ defaults to `help`:
                           submit a runnable to the service that hosts it
     status jobs <run_id> [service]
                           status of one run (service defaults to huggingface)
+    create <models|spaces|datasets|jobs> <service> <name>
+                          create the entity on the remote service (a service
+                          that cannot create it errors out saying so)
+    delete <models|spaces|datasets|jobs> <service> <name>
+                          delete the entity on the remote service —
+                          DESTRUCTIVE and remote-only (local submodules are
+                          removed via `unload`, not here)
     help [operation [entity]]
                           usage overview, or one operation's detailed usage
                           (e.g. `help status jobs`) — needs no .env
@@ -77,7 +84,8 @@ from dotenv import load_dotenv         # noqa: E402
 load_dotenv(ROOT / ".env")
 
 from lib.utilities import show_help, usage_exit             # noqa: E402
-from lib.operations import (ExecuteOperation, GitOperation, ListOperation,  # noqa: E402
+from lib.operations import (CreateOperation, DeleteOperation,  # noqa: E402
+                            ExecuteOperation, GitOperation, ListOperation,
                             LoadOperation, StatusOperation, UnloadOperation)
 
 
@@ -86,7 +94,8 @@ from lib.operations import (ExecuteOperation, GitOperation, ListOperation,  # no
 #
 #   <operation> <entity> [...<mandatory>] [...<optional>] [...<vargs>]
 #
-# Operations are the verbs (list, load, unload, git, execute, status); the
+# Operations are the verbs (list, load, unload, git, execute, status,
+# create, delete); the
 # ENTITY they act on (namespaces, models, spaces, datasets, jobs) is their
 # FIRST mandatory argument — validated inside each operation's _run like
 # every other argument. SPECS holds one BaseOperation instance per verb;
@@ -103,6 +112,8 @@ SPECS = {
     "git": GitOperation(),
     "execute": ExecuteOperation(),
     "status": StatusOperation(),
+    "create": CreateOperation(),
+    "delete": DeleteOperation(),
 }
 
 

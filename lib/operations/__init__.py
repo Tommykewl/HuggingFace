@@ -13,8 +13,13 @@ acts on.
   git.py      GitOperation     — git <models|spaces|datasets> <ns> <name> <args...>
   execute.py  ExecuteOperation — execute jobs <ns>/<model>/<type>/<script>
   status.py   StatusOperation  — status jobs <run_id> [service]
+  remote.py   RemoteOperation  — shared base for the remote-entity operations below
+  create.py   CreateOperation  — create <models|spaces|datasets|jobs> <service> <name>
+  delete.py   DeleteOperation  — delete <models|spaces|datasets|jobs> <service> <name>
 """
 
+from lib.operations.create import CreateOperation
+from lib.operations.delete import DeleteOperation
 from lib.operations.execute import ExecuteOperation
 from lib.operations.git import GitOperation
 from lib.operations.list import ListOperation

@@ -114,6 +114,23 @@ def load_service(service):
     return classes[0](ROOT)
 
 
+def reachable_services():
+    """Yield (name, instance) for every registered service — huggingface
+    (hf/service.py) first, then each external that ships a service.py —
+    that has usable credentials; the rest are noted and skipped, so one
+    missing login never fails a whole sweep."""
+    names = ["huggingface"]
+    names += sorted(d.name for d in ROOT.iterdir()
+                    if d.is_dir() and d.name != "hf"
+                    and (d / "service.py").is_file())
+    for name in names:
+        service = load_service(name)
+        if service.is_logged_in():
+            yield name, service
+        else:
+            print(f"[{name}] skipped — no credentials in .env for this service")
+
+
 # ---------------------------------------------------------------------------
 # Git plumbing.
 # ---------------------------------------------------------------------------

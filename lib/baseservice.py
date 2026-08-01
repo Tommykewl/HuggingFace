@@ -21,20 +21,29 @@ _implementation):
   * get_status(run_id) -> str
         Current status of a run previously started (or any run the account
         can see) identified by that run id.
-  * list(kind) -> list | dict | None
-        THE single listing method — one per service, taking the kind of
-        thing to list. Every service supports:
-          "runs"     the current user's runs, newest first, as {"id",
+  * list(entity) -> list | dict | None
+        THE single listing method — one per service, taking the entity to
+        list. Every service supports:
+          "jobs"     the current user's jobs, newest first, as {"id",
                      "title", "status"} dicts (fields best-effort; "id" is
                      always usable with get_status)
           "datasets" the current user's datasets on the service
-        A service may support further kinds (hf/service.py's
+        A service may support further entities (hf/service.py's
         HuggingFaceService adds "models", "spaces", "namespaces"; its repo
-        kinds return
-        {namespace: [ids]} dicts). A kind the service has NO CONCEPT of
+        entities return
+        {namespace: [ids]} dicts). An entity the service has NO CONCEPT of
         (e.g. Spaces on Kaggle) returns None — lib/main.py's listings sweep every
         service and skip the Nones. None means "not a thing here"; an empty
         list/dict means "a thing here, and the account has none".
+  * create(entity, name) -> str
+        Create <name> as a new <entity> on the service (e.g. a Hub model
+        repo) and return its id/url. An entity the service cannot create
+        MUST sys.exit with an error saying so (never a silent no-op) —
+        same for a creation the service rejects.
+  * delete(entity, name) -> str
+        Delete the <entity> named <name> on the service and return its id.
+        Same error rule as create(): impossible or rejected deletions
+        sys.exit with an error.
 
 Authentication — every public method calls login() first. login() is
 service-specific and therefore abstract here (each SDK names and consumes
@@ -81,12 +90,24 @@ class BaseService(ABC):
         self.login()
         return self._get_status(run_id)
 
-    def list(self, kind: str):
-        """List the account's <kind> ("runs", "datasets", ...) — see the
-        module docstring for the contract; a kind the service has no
+    def list(self, entity: str):
+        """List the account's <entity> ("jobs", "datasets", ...) — see the
+        module docstring for the contract; an entity the service has no
         concept of returns None."""
         self.login()
-        return self._list(kind)
+        return self._list(entity)
+
+    def create(self, entity: str, name: str) -> str:
+        """Create <name> as a new <entity> on the service — see the module
+        docstring for the contract; errors out when it cannot."""
+        self.login()
+        return self._create(entity, name)
+
+    def delete(self, entity: str, name: str) -> str:
+        """Delete the <entity> named <name> on the service — see the module
+        docstring for the contract; errors out when it cannot."""
+        self.login()
+        return self._delete(entity, name)
 
     # -- authentication ------------------------------------------------------
     @abstractmethod
@@ -112,7 +133,13 @@ class BaseService(ABC):
     def _get_status(self, run_id: str) -> str: ...
 
     @abstractmethod
-    def _list(self, kind: str): ...
+    def _list(self, entity: str): ...
+
+    @abstractmethod
+    def _create(self, entity: str, name: str) -> str: ...
+
+    @abstractmethod
+    def _delete(self, entity: str, name: str) -> str: ...
 
     # -- shared helpers (protected: for service implementations only) --------
     def _load_config(self, script: Path, name: str) -> dict:
