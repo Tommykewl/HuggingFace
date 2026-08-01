@@ -24,7 +24,3 @@ hf_home/
 
 # Local run logs
 logs/
-
-# Submodule registry — machine-local: submodules are loaded/unloaded
-# dynamically via the mlops utility (load/unload operations)
-.gitmodules
