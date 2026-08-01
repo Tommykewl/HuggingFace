@@ -24,3 +24,9 @@ hf_home/
 
 # Local run logs
 logs/
+
+# Remote-backed local caches — loaded/unloaded via mlops; the remote is
+# the source of truth (kaggle downloads; job artifacts staged in HF
+# buckets / kaggle mlops-jobs datasets)
+kaggle/*/
+hf/*/jobs/

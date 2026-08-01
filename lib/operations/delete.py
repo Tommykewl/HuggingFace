@@ -26,11 +26,11 @@ class DeleteOperation(RemoteOperation):
          "the Hub dataset repo; kaggle: the Kaggle dataset). Same rules as\n"
          "`delete models`."),
         ("delete jobs <service> <namespace> <name>",
-         "Delete the job <name> in <namespace> on <service>: huggingface\n"
-         "cancels the Hub Job (<name> = the job id from `list jobs` /\n"
-         "`execute jobs`, <namespace> = the account it ran under); kaggle\n"
-         "deletes the kernel (<name> = the kernel slug, <namespace> = its\n"
-         "owner)."),
+         "Delete the job <namespace>/<name>'s STAGING STORAGE — artifacts\n"
+         "and all (huggingface: the storage bucket; kaggle: the mlops-jobs\n"
+         "dataset, marker-verified first so a plain data dataset can never\n"
+         "be deleted through the jobs entity). DESTRUCTIVE: the staging is\n"
+         "the source of truth for the job."),
     ]
 
     def _run(self, mandatory, optional, vargs):

@@ -25,9 +25,12 @@ class CreateOperation(RemoteOperation):
          "Create <namespace>/<name> as a new dataset on <service>\n"
          "(huggingface: a Hub dataset repo). Same rules as `create models`."),
         ("create jobs <service> <namespace> <name>",
-         "Jobs are not created by name on any current service — they are\n"
-         "submitted from a runnable via `execute jobs`; every service\n"
-         "errors out pointing there."),
+         "Create the job <namespace>/<name>'s STAGING STORAGE — the source\n"
+         "of truth for its artifacts, which `load jobs` syncs from.\n"
+         "huggingface: a private storage bucket. kaggle: a private dataset\n"
+         "marked 'mlops-jobs' in its subtitle (Kaggle rejects custom tags;\n"
+         "the subtitle is server-side searchable, which `list jobs` uses).\n"
+         "Example: create jobs kaggle tamobiswas my-job"),
     ]
 
     def _run(self, mandatory, optional, vargs):

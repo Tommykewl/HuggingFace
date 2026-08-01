@@ -10,16 +10,20 @@ Implements the full BaseService contract:
   run()           -> run id: the Hugging Face Job id (submits first-party
                      scripts as Hugging Face Jobs via HfApi.run_uv_job)
   get_status(id)  -> inspect_job(job_id): the job's stage
-  list(entity)    -> the single listing method; beyond the contract's
-                     "jobs" (list_jobs) it supports the Hub-only entities
-                     "models" / "spaces" / "datasets" ({namespace: [ids]}
-                     per account namespace) and "namespaces" (the
-                     account's user + orgs)
-  create(entity, name) -> create_repo for the repo entities (Spaces get
-                     the Gradio SDK); jobs error out (submitted via
-                     `execute jobs`, never created by name)
-  delete(entity, name) -> delete_repo for the repo entities; "jobs"
-                     cancels the Hub Job (they cannot be erased)
+  list(entity)    -> the single listing method: "models" / "spaces" /
+                     "datasets" ({namespace: [ids]} per account
+                     namespace), "namespaces" (the account's user + orgs)
+                     and "jobs" (the job staging buckets per namespace —
+                     the staging IS the job entity)
+  create/delete(entity, namespace, name) -> create_repo / delete_repo for
+                     the repo entities (Spaces get the Gradio SDK); "jobs"
+                     creates/deletes the private staging bucket
+                     <namespace>/<name> (the source of truth for the
+                     job's artifacts)
+  load/unload(entity, namespace, name) -> repo entities materialize as
+                     git submodules under hf/ (unload: deinit, or full
+                     removal with force); "jobs" sync from / delete the
+                     gitignored local cache hf/<ns>/jobs/<name>
   login()         -> mandates HF_TOKEN in the environment (workspace
                      .env, loaded by lib/main.py at startup) — the only login
                      route
@@ -27,10 +31,12 @@ Implements the full BaseService contract:
 
 import inspect
 import os
+import shutil
 import sys
 
 from lib.baseservice import BaseService
-from lib.config import REPO_KINDS
+from lib.config import REPO_KINDS, ROOT
+from lib.utilities import git, registered_submodules
 
 
 def hub():
@@ -160,14 +166,11 @@ class HuggingFaceService(BaseService):
         list_datasets)."""
         api = self._hub().HfApi()
         if entity == "jobs":
-            jobs = []
-            for job in api.list_jobs():
-                status = getattr(job, "status", None)
-                command = getattr(job, "command", None) or []
-                jobs.append({"id": str(getattr(job, "id", "")),
-                             "title": " ".join(map(str, command))[:80],
-                             "status": str(getattr(status, "stage", status))})
-            return jobs
+            # Jobs are staged in storage buckets (<namespace>/<job name>) —
+            # the staging is the entity, so listing jobs lists the buckets.
+            # (Run instances are tracked via `execute` / `status jobs`.)
+            return {ns: [str(b.id) for b in api.list_buckets(namespace=ns)]
+                    for ns in self._list("namespaces")}
         if entity == "namespaces":
             who = api.whoami()
             names = [who.get("name")]
@@ -196,9 +199,17 @@ class HuggingFaceService(BaseService):
                 return str(self._hub().HfApi().create_repo(**kwargs))
             except Exception as exc:
                 sys.exit(f"Cannot create {repo_type} '{repo_id}' on the Hub: {exc}")
-        sys.exit(f"Cannot create '{entity}' on huggingface — jobs are "
-                 "submitted from a runnable via `execute jobs`, never "
-                 "created by name")
+        if entity == "jobs":
+            # A job's staging storage IS the job entity: a private storage
+            # bucket <namespace>/<name> holding the job's artifacts — the
+            # source of truth `load jobs` pulls from.
+            bucket_id = f"{namespace}/{name}"
+            try:
+                self._hub().HfApi().create_bucket(bucket_id, private=True)
+            except Exception as exc:
+                sys.exit(f"Cannot create job staging bucket '{bucket_id}': {exc}")
+            return f"{bucket_id} (staging bucket)"
+        sys.exit(f"Cannot create '{entity}' on huggingface — no such concept")
 
     def _delete(self, entity: str, namespace: str, name: str) -> str:
         """Delete <namespace>/<name> on the Hub (see the BaseService
@@ -217,9 +228,140 @@ class HuggingFaceService(BaseService):
                 sys.exit(f"Cannot delete {repo_type} '{repo_id}' on the Hub: {exc}")
             return repo_id
         if entity == "jobs":
+            # Deleting a job deletes its staging bucket — artifacts and all.
+            bucket_id = f"{namespace}/{name}"
             try:
-                api.cancel_job(job_id=name, namespace=namespace)
+                api.delete_bucket(bucket_id)
             except Exception as exc:
-                sys.exit(f"Cannot cancel job '{name}' in '{namespace}': {exc}")
-            return f"{name} (cancelled — Hub Jobs cannot be erased)"
+                sys.exit(f"Cannot delete job staging bucket '{bucket_id}': {exc}")
+            return f"{bucket_id} (staging bucket)"
         sys.exit(f"Cannot delete '{entity}' on huggingface — no such concept")
+
+    # -- local materialization (guarded by BaseService.load/unload) ----------
+    def _local_dir(self, entity, namespace, name):
+        """Where the entity lives locally: hf/<namespace>/<entity>/<name>."""
+        return ROOT / "hf" / namespace / entity / name
+
+    def _check_namespace(self, namespace):
+        """<namespace> must be one of the account's namespaces."""
+        namespaces = self._list("namespaces")
+        if namespace not in namespaces:
+            sys.exit(f"ERROR: '{namespace}' is not a namespace of this "
+                     f"account on huggingface ({', '.join(namespaces)}) — "
+                     "see: list namespaces")
+
+    def _load(self, entity: str, namespace: str, name: str) -> str:
+        """Materialize <namespace>/<name> locally (see the BaseService
+        contract).
+
+        Repo entities (models/spaces/datasets) are git repos: `git
+        submodule add`ed (or `update --init`ed when already registered) at
+        hf/<ns>/<entity>/<name> with GIT_LFS_SKIP_SMUDGE=1 so LFS payloads
+        stay pointers. "jobs" syncs the job's staging bucket — the source
+        of truth, which must already exist (`create jobs`) — into
+        hf/<ns>/jobs/<name> (gitignored: remote-backed cache)."""
+        api = self._hub().HfApi()
+        self._check_namespace(namespace)
+        target = self._local_dir(entity, namespace, name)
+        rel = f"hf/{namespace}/{entity}/{name}"
+        if entity in REPO_KINDS:
+            repo_type, url_prefix = REPO_KINDS[entity]
+            if not api.repo_exists(f"{namespace}/{name}", repo_type=repo_type):
+                sys.exit(f"ERROR: {repo_type} '{namespace}/{name}' does not "
+                         f"exist on the Hub — see: list {entity}")
+            if target.is_dir() and any(target.iterdir()):
+                sys.exit(f"'{rel}' is already loaded — nothing to do")
+            url = f"{url_prefix}{namespace}/{name}"
+            if rel in registered_submodules():
+                # Registered in .gitmodules — just init it.
+                git("submodule", "update", "--init", rel, lfs_skip=True)
+            else:
+                git("submodule", "add", url, rel, lfs_skip=True)
+                print("note: the new submodule is staged (.gitmodules + "
+                      "gitlink) — commit to keep it tracked")
+            return f"{rel}  <->  {url}"
+        if entity == "jobs":
+            bucket_id = f"{namespace}/{name}"
+            try:
+                api.bucket_info(bucket_id)
+            except Exception as exc:
+                sys.exit(f"ERROR: no staging bucket '{bucket_id}' — the "
+                         "staging storage is the source of truth for jobs "
+                         f"and is created by `create jobs` ({exc})")
+            target.mkdir(parents=True, exist_ok=True)
+            try:
+                api.sync_bucket(source=f"hf://buckets/{bucket_id}",
+                                dest=str(target))
+            except Exception as exc:
+                sys.exit(f"Cannot sync bucket '{bucket_id}' to {rel}: {exc}")
+            return f"{rel}  <->  hf://buckets/{bucket_id}"
+        sys.exit(f"Cannot load '{entity}' on huggingface — no such concept")
+
+    def _unload(self, entity: str, namespace: str, name: str,
+                force: bool = False) -> str:
+        """Remove the local copy of <namespace>/<name> (see the BaseService
+        contract).
+
+        Repo entities: `git submodule deinit` (stays registered) — with
+        force, a complete removal: gitlink, .gitmodules entry and the
+        .git/modules cache (blocked on unpushed commits, since the Hub repo
+        becomes the only copy). Both refuse on uncommitted changes. "jobs":
+        the local folder is deleted — the staging bucket keeps the
+        artifacts (it is the source of truth)."""
+        target = self._local_dir(entity, namespace, name)
+        rel = f"hf/{namespace}/{entity}/{name}"
+        if entity in REPO_KINDS:
+            if rel not in registered_submodules():
+                sys.exit(f"ERROR: '{rel}' is not a tracked submodule — "
+                         f"see: list {entity}")
+            if not (target.is_dir() and any(target.iterdir())):
+                sys.exit(f"'{rel}' is not loaded — nothing to do")
+            # Never discard local work: deinit -f would drop uncommitted
+            # changes.
+            dirty = git("-C", str(target), "status", "--porcelain",
+                        capture=True)
+            if dirty.stdout.strip():
+                sys.exit(f"ERROR: '{rel}' has uncommitted changes — commit "
+                         "and push them to the Hub before unloading:\n"
+                         + dirty.stdout.rstrip())
+            if not force:
+                git("submodule", "deinit", "-f", rel)
+                return f"{rel} (still registered — `load` restores it)"
+            # force: the Hub repo becomes the only remaining copy, so
+            # unpushed commits block too.
+            unpushed = git("-C", str(target), "log", "--oneline",
+                           "--branches", "--not", "--remotes", capture=True)
+            if unpushed.stdout.strip():
+                sys.exit(f"ERROR: '{rel}' has commits not pushed to the Hub "
+                         "— push them before unloading with -f:\n"
+                         + unpushed.stdout.rstrip())
+            # Resolve the .git/modules cache path BEFORE git rm drops the
+            # .gitmodules entry the name comes from.
+            modname = self._submodule_name(rel)
+            git("submodule", "deinit", "-f", rel)
+            # git rm removes the worktree, the gitlink, and the .gitmodules
+            # entry, staging all of it.
+            git("rm", "-f", rel)
+            if modname:
+                shutil.rmtree(ROOT / ".git" / "modules" / modname,
+                              ignore_errors=True)
+            return f"{rel} (removed — staged; commit to share the removal)"
+        if entity == "jobs":
+            if not target.is_dir():
+                sys.exit(f"'{rel}' is not loaded — nothing to do")
+            shutil.rmtree(target)
+            return f"{rel} (deleted locally — the staging bucket keeps the artifacts)"
+        sys.exit(f"Cannot unload '{entity}' on huggingface — no such concept")
+
+    @staticmethod
+    def _submodule_name(rel):
+        """The .gitmodules section name whose path is rel (name and path
+        can differ — `submodule add` derives the name, and moves may
+        desync them)."""
+        result = git("config", "-f", ".gitmodules", "--get-regexp",
+                     r"submodule\..*\.path", capture=True, check=False)
+        for line in result.stdout.splitlines():
+            key, _, path = line.partition(" ")
+            if path == rel:
+                return key[len("submodule."):-len(".path")]
+        return None

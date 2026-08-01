@@ -13,15 +13,18 @@ defaults to `help`:
                           the account's <entity> on every reachable service;
                           each Hub repo is marked loaded/not-loaded (loaded =
                           its submodule is initialized under hf/)
-    load <models|spaces|datasets> <service> <namespace> <name>
-                          materialize the repo as a git submodule under
-                          hf/<namespace>/<entity>/<name> (only huggingface
-                          hosts loadable git repos)
-    unload <models|spaces|datasets> <service> <namespace> <name> [-f]
-                          deinit the submodule (empties its folder locally;
-                          it stays registered and can be loaded again);
-                          -f removes it entirely (gitlink, .gitmodules
-                          entry, .git/modules cache)
+    load <models|spaces|datasets|jobs> <service> <namespace> <name>
+                          materialize the entity's content locally: hf repo
+                          entities as git submodules under hf/, kaggle
+                          entities as downloads, jobs from their staging
+                          storage (HF bucket / kaggle mlops-jobs dataset —
+                          the source of truth, created by `create jobs`)
+    unload <models|spaces|datasets|jobs> <service> <namespace> <name> [-f]
+                          remove the local copy (the remote keeps the
+                          content): hf submodules deinit — with -f, full
+                          removal (gitlink, .gitmodules entry, .git/modules
+                          cache); kaggle folders and job artifact caches
+                          are simply deleted
     git <models|spaces|datasets> <service> <namespace> <name> <git args...>
                           proxy a git command to that submodule
                           (git -C hf/<namespace>/<entity>/<name> <git args...>)
@@ -31,11 +34,14 @@ defaults to `help`:
                           status of one run (service defaults to huggingface)
     create <models|spaces|datasets|jobs> <service> <namespace> <name>
                           create <namespace>/<name> on the remote service (a
-                          service that cannot create it errors out saying so)
+                          service that cannot create it errors out saying
+                          so); jobs create their staging storage (private
+                          HF bucket / kaggle mlops-jobs dataset)
     delete <models|spaces|datasets|jobs> <service> <namespace> <name>
                           delete <namespace>/<name> on the remote service —
-                          DESTRUCTIVE and remote-only (local submodules are
-                          removed via `unload`, not here)
+                          DESTRUCTIVE and remote-only (local copies are
+                          removed via `unload`, not here); jobs delete
+                          their staging storage, artifacts and all
     help [operation [entity]]
                           usage overview, or one operation's detailed usage
                           (e.g. `help status jobs`) — needs no .env

@@ -1,8 +1,8 @@
 """RemoteOperation — the shared base of the remote-entity operations
-(create / delete), which act on an entity DIRECTLY on one remote service
-(the Hugging Face Hub, Kaggle, ...) rather than on a local checkout.
-Holds the <entity> <service> <namespace> <name> argument validation they
-share."""
+(create / delete / load / unload), which target an entity of one remote
+service (the Hugging Face Hub, Kaggle, ...). Holds the <entity> <service>
+<namespace> <name> argument validation they share; the HOW of each verb
+is the service's BaseService implementation."""
 
 from lib.operations.baseoperation import BaseOperation
 from lib.utilities import reachable_services
@@ -15,8 +15,8 @@ REMOTE_ENTITIES = ("models", "spaces", "datasets", "jobs")
 
 
 class RemoteOperation(BaseOperation):
-    """Shared base for create/delete: the entity/service/namespace/name
-    validation."""
+    """Shared base for create/delete/load/unload: the entity/service/
+    namespace/name validation."""
 
     mandatory_count = 4                    # <entity> <service> <namespace> <name>
     optional_max = None                    # no vargs

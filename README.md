@@ -39,10 +39,10 @@ MachineLearningMaster/                  ← workspace root
 │           └── externals.json          – operations this model delegates to external services
 └── <service>/                          – everything that runs on another service, e.g. kaggle/
     ├── service.py                      – the service's runner: one BaseService subclass
-    └── <namespace>/jobs/<reference>/   – referenced from a model's externals.json;
-        └── ...                           <namespace> = the account's username on the
-                                          service; same stage layout, e.g.
-                                          index.kaggle.ipynb + config
+    └── <namespace>/jobs/<reference>/   – GITIGNORED local cache of the job's staging
+        └── ...                           storage (loaded/unloaded via mlops; <namespace>
+                                          = the account's username on the service); same
+                                          stage layout, e.g. index.kaggle.ipynb + config
 ```
 
 `hf/<namespace>/models/<model>` is a **git submodule of the model's HF repo**:
@@ -56,6 +56,13 @@ elsewhere — e.g. Kaggle's free GPUs — lives under
 being the account's username on that service) with the same stage layout,
 referenced from the model's `externals.json`. Every runnable has an adjacent
 `<name>.config.json` declaring exactly how it runs.
+
+A job's content is owned by its **staging storage** — a private HF storage
+bucket (huggingface) or a private Kaggle dataset marked `mlops-jobs` in its
+subtitle (kaggle), named after the job. `create jobs` creates that staging;
+`load jobs` syncs it into the gitignored local folder above (do this before
+`execute`-ing its scripts); `unload jobs` deletes the local copy; `delete
+jobs` deletes the staging itself. `list jobs` lists the staging entities.
 
 ## Models
 

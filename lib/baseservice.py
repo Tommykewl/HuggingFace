@@ -45,6 +45,19 @@ _implementation):
         Delete the <entity> <namespace>/<name> on the service and return
         its id. Same error rule as create(): impossible or rejected
         deletions sys.exit with an error.
+  * load(entity, namespace, name) -> str
+        Materialize the <entity> <namespace>/<name> locally from the
+        remote (git repos as submodules, plain repos as downloads, jobs
+        from their staging storage — the staging is the source of truth
+        and must already exist: created by `create jobs`, never here).
+        Returns a short summary of what was loaded. Same error rule as
+        create().
+  * unload(entity, namespace, name, force=False) -> str
+        Remove the local copy of the <entity> (the remote keeps the
+        content). force carries the CLI's -f: for git submodules it turns
+        the default deinit-only unload into a complete removal; entities
+        whose unload is already just a local delete ignore it. Same error
+        rule as create().
 
 Authentication — every public method calls login() first. login() is
 service-specific and therefore abstract here (each SDK names and consumes
@@ -111,6 +124,21 @@ class BaseService(ABC):
         self.login()
         return self._delete(entity, namespace, name)
 
+    def load(self, entity: str, namespace: str, name: str) -> str:
+        """Materialize the <entity> <namespace>/<name> locally from the
+        remote — see the module docstring for the contract; errors out
+        when it cannot."""
+        self.login()
+        return self._load(entity, namespace, name)
+
+    def unload(self, entity: str, namespace: str, name: str,
+               force: bool = False) -> str:
+        """Remove the local copy of the <entity> <namespace>/<name> (the
+        remote keeps the content; force = the CLI's -f) — see the module
+        docstring for the contract; errors out when it cannot."""
+        self.login()
+        return self._unload(entity, namespace, name, force)
+
     # -- authentication ------------------------------------------------------
     @abstractmethod
     def login(self) -> None:
@@ -142,6 +170,13 @@ class BaseService(ABC):
 
     @abstractmethod
     def _delete(self, entity: str, namespace: str, name: str) -> str: ...
+
+    @abstractmethod
+    def _load(self, entity: str, namespace: str, name: str) -> str: ...
+
+    @abstractmethod
+    def _unload(self, entity: str, namespace: str, name: str,
+                force: bool = False) -> str: ...
 
     # -- shared helpers (protected: for service implementations only) --------
     def _load_config(self, script: Path, name: str) -> dict:

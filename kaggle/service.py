@@ -6,14 +6,22 @@ library is used directly (the kaggle CLI is only a wrapper around it).
 Implements the full BaseService contract:
   run()           -> run id "<user>/<kernel-slug>" (the pushed kernel ref)
   get_status(id)  -> kernels_status: QUEUED / RUNNING / COMPLETE / ERROR ...
-  list(entity)    -> "jobs": kernels_list(mine=True);
-                     "datasets": dataset_list(mine=True); "namespaces":
-                     the logged-in username; nothing else
-  create(...)     -> always errors: Kaggle creates nothing by name (kernels
-                     appear via kernels_push, datasets/models via uploads)
-  delete(entity, namespace, name) -> "jobs": kernels_delete; "datasets":
-                     dataset_delete; "models": model_delete (the namespace
-                     is the owner); nothing else
+  list(entity)    -> "jobs": the job staging datasets (JOBS_MARKER
+                     subtitle, filtered server-side); "datasets":
+                     dataset_list(mine=True) minus the jobs datasets;
+                     "namespaces": the logged-in username; nothing else
+  create(entity, namespace, name) -> "jobs" only: the job's private
+                     staging dataset (JOBS_MARKER subtitle — the source
+                     of truth for the job's artifacts); everything else
+                     errors (kernels appear via kernels_push, data
+                     datasets/models via uploads)
+  delete(entity, namespace, name) -> "jobs": delete the staging dataset
+                     (marker-verified first); "datasets": dataset_delete;
+                     "models": model_delete; nothing else
+  load/unload(entity, namespace, name) -> not git-based: load downloads
+                     into the gitignored kaggle/<ns>/<entity>/<name>
+                     (datasets directly, jobs from their marker-verified
+                     staging dataset); unload deletes that folder
   login()         -> mandates Kaggle credentials in the environment
                      (workspace .env, loaded at startup) — the only login
                      route. Either credential kind works: KAGGLE_TOKEN (an
@@ -70,11 +78,18 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from lib.baseservice import BaseService
+from lib.config import ROOT
 
 SECRETS_SLUG = "external-secrets"
+# A job's staging storage on Kaggle is a private dataset named after the
+# job, marked by this string in its SUBTITLE — Kaggle rejects custom
+# keywords/tags, and the subtitle is indexed by the server-side
+# dataset_list(search=...) filter, so listing jobs is one API call.
+JOBS_MARKER = "mlops-jobs"
 
 
 class KaggleService(BaseService):
@@ -160,37 +175,99 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
         if entity == "namespaces":
             return [user]
         if entity == "jobs":
-            kernels = api.kernels_list(mine=True, page_size=50, sort_by="dateRun") or []
-            return [{"id": str(k.ref), "title": str(getattr(k, "title", "") or ""),
-                     "status": None}       # kernels_list carries no per-job status;
-                    for k in kernels if k] # use get_status(id) for a specific job
+            # The job staging datasets, filtered server-side by the
+            # JOBS_MARKER subtitle (see its comment). Run instances are
+            # tracked via `execute` / `status jobs`.
+            return [str(d.ref) for d in self._jobs_datasets(api)]
         if entity == "datasets":
+            # Plain data datasets only — the jobs staging datasets are a
+            # different entity (`list jobs`).
+            jobs = {str(d.ref) for d in self._jobs_datasets(api)}
             datasets = api.dataset_list(mine=True) or []
-            return [str(d.ref) for d in datasets if d]
+            return [str(d.ref) for d in datasets if d and str(d.ref) not in jobs]
         return None      # entity unknown here (e.g. Kaggle has no Spaces)
 
+    @staticmethod
+    def _jobs_datasets(api):
+        """The account's job staging datasets: server-side search on the
+        JOBS_MARKER subtitle, re-checked client-side (search also matches
+        titles/descriptions)."""
+        hits = api.dataset_list(mine=True, search=JOBS_MARKER) or []
+        return [d for d in hits
+                if d and JOBS_MARKER in str(getattr(d, "subtitle", "") or "")]
+
     def _create(self, entity: str, namespace: str, name: str) -> str:
-        """Kaggle creates nothing by name (see the BaseService contract):
-        kernels appear via `execute jobs` (kernels_push), datasets and
-        models via their folder-upload flows — so every entity errors out."""
-        sys.exit(f"Cannot create '{entity}' on kaggle — kernels are created "
-                 "by `execute jobs` (kernels_push), datasets/models by their "
-                 "upload flows; nothing is created by name")
+        """Create <namespace>/<name> on Kaggle (see the BaseService
+        contract).
+
+        "jobs" -> the job's staging storage: a private dataset named after
+        the job, marked as a jobs dataset via JOBS_MARKER in its subtitle
+        (created with a placeholder manifest — Kaggle datasets need at
+        least one file; artifacts arrive as later versions). Everything
+        else errors out: kernels appear via `execute jobs` (kernels_push),
+        data datasets and models via their folder-upload flows."""
+        if entity != "jobs":
+            sys.exit(f"Cannot create '{entity}' on kaggle — kernels are "
+                     "created by `execute jobs` (kernels_push), datasets/"
+                     "models by their upload flows; only jobs (their staging "
+                     "dataset) are created by name")
+        api, _ = self._api()
+        ref = f"{namespace}/{name}"
+        with tempfile.TemporaryDirectory() as stage:
+            with open(Path(stage) / "dataset-metadata.json", "w") as fh:
+                json.dump({"title": name, "id": ref,
+                           "subtitle": f"{JOBS_MARKER} staging artifacts",
+                           "licenses": [{"name": "CC0-1.0"}]}, fh)
+            with open(Path(stage) / "mlops-jobs.json", "w") as fh:
+                json.dump({"job": name, "marker": JOBS_MARKER}, fh)
+            try:
+                response = api.dataset_create_new(str(stage), public=False,
+                                                  quiet=True, dir_mode="zip")
+            except Exception as exc:
+                sys.exit(f"Cannot create job staging dataset '{ref}': {exc}")
+        error = getattr(response, "error", "") or ""
+        if error:
+            sys.exit(f"Cannot create job staging dataset '{ref}': {error}")
+        # The marker subtitle rides in the create metadata above; verify it
+        # stuck (it is how jobs datasets are identified — without it
+        # `list jobs` cannot see it). Brand-new datasets 403 on every read
+        # until processing finishes, so retry the metadata fetch itself.
+        subtitle = ""
+        for _ in range(12):
+            try:
+                with tempfile.TemporaryDirectory() as check:
+                    api.dataset_metadata(ref, check)
+                    info = json.load(open(Path(check) / "dataset-metadata.json"))
+                    subtitle = (info.get("info") or info).get("subtitle") or ""
+                break
+            except Exception:
+                time.sleep(5)
+        if JOBS_MARKER not in subtitle:
+            sys.exit(f"Created '{ref}' but the {JOBS_MARKER} subtitle marker "
+                     "did not stick — set the subtitle manually, or the "
+                     "dataset stays invisible to `list jobs`")
+        return f"{ref} (staging dataset)"
 
     def _delete(self, entity: str, namespace: str, name: str) -> str:
         """Delete <namespace>/<name> on Kaggle (see the BaseService
         contract).
 
-        "jobs" -> kernels_delete, "datasets" -> dataset_delete, "models" ->
-        model_delete (<namespace> is the owner — usually the logged-in
-        username); no_confirm skips the library's interactive prompt (mlops
-        never prompts). Spaces and namespaces are not Kaggle concepts."""
+        "jobs" -> delete the job's staging dataset (verified to carry the
+        JOBS_MARKER subtitle first, so a plain data dataset can never be
+        deleted through the jobs entity), "datasets" -> dataset_delete,
+        "models" -> model_delete; no_confirm skips the library's
+        interactive prompt (mlops never prompts). Spaces and namespaces
+        are not Kaggle concepts."""
         api, _ = self._api()
         ref = f"{namespace}/{name}"
         try:
             if entity == "jobs":
-                api.kernels_delete(ref, no_confirm=True)
-            elif entity == "datasets":
+                if ref not in {str(d.ref) for d in self._jobs_datasets(api)}:
+                    sys.exit(f"ERROR: '{ref}' is not a job staging dataset "
+                             f"(no '{JOBS_MARKER}' subtitle) — see: list jobs")
+                api.dataset_delete(namespace, name, no_confirm=True)
+                return f"{ref} (staging dataset)"
+            if entity == "datasets":
                 api.dataset_delete(namespace, name, no_confirm=True)
             elif entity == "models":
                 api.model_delete(ref, no_confirm=True)
@@ -201,6 +278,64 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
         except Exception as exc:
             sys.exit(f"Cannot delete {entity} '{ref}' on kaggle: {exc}")
         return ref
+
+    # -- local materialization (guarded by BaseService.load/unload) ----------
+    def _local_dir(self, entity, namespace, name):
+        """Where the entity lives locally: kaggle/<ns>/<entity>/<name>
+        (jobs: the stage-layout folder execute resolves scripts from).
+        All of kaggle/<ns>/ is gitignored — remote-backed caches only."""
+        return ROOT / "kaggle" / namespace / entity / name
+
+    def _load(self, entity: str, namespace: str, name: str) -> str:
+        """Materialize <namespace>/<name> locally (see the BaseService
+        contract).
+
+        Kaggle repos are not git-based, so loading is a download into the
+        gitignored kaggle/<ns>/<entity>/<name>: "datasets" via
+        dataset_download_files; "jobs" from the job's staging dataset (the
+        source of truth — must exist, `create jobs` makes it; verified via
+        its JOBS_MARKER subtitle). "models" cannot be loaded by name alone
+        (a download needs framework/instance/version)."""
+        api, _ = self._api()
+        ref = f"{namespace}/{name}"
+        target = self._local_dir(entity, namespace, name)
+        rel = target.relative_to(ROOT)
+        if entity not in ("datasets", "jobs"):
+            sys.exit(f"Cannot load '{entity}' on kaggle — datasets and jobs "
+                     "only (models need framework/instance/version, which "
+                     "load's <name> cannot express)")
+        if target.is_dir() and any(target.iterdir()):
+            sys.exit(f"'{rel}' is already loaded — nothing to do")
+        if entity == "jobs" and ref not in {str(d.ref)
+                                            for d in self._jobs_datasets(api)}:
+            sys.exit(f"ERROR: no job staging dataset '{ref}' — the staging "
+                     "storage is the source of truth for jobs and is "
+                     "created by `create jobs`")
+        target.mkdir(parents=True, exist_ok=True)
+        try:
+            api.dataset_download_files(ref, path=str(target), unzip=True,
+                                       quiet=True)
+        except Exception as exc:
+            shutil.rmtree(target, ignore_errors=True)
+            sys.exit(f"Cannot download '{ref}' to {rel}: {exc}")
+        return f"{rel}  <->  {ref}"
+
+    def _unload(self, entity: str, namespace: str, name: str,
+                force: bool = False) -> str:
+        """Remove the local copy of <namespace>/<name> (see the BaseService
+        contract): a plain folder delete — Kaggle keeps the content (for
+        jobs, the staging dataset is the source of truth). force is
+        meaningless here (nothing is git-registered) and ignored."""
+        if entity not in ("datasets", "jobs"):
+            sys.exit(f"Cannot unload '{entity}' on kaggle — datasets and "
+                     "jobs only")
+        target = self._local_dir(entity, namespace, name)
+        rel = target.relative_to(ROOT)
+        if not target.is_dir():
+            sys.exit(f"'{rel}' is not loaded — nothing to do")
+        shutil.rmtree(target)
+        return (f"{rel} (deleted locally — kaggle keeps the content; "
+                f"`load {entity}` restores it)")
 
     # -- helpers ------------------------------------------------------------
     def _setup(self) -> None:

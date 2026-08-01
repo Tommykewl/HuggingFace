@@ -21,8 +21,8 @@ HF model repo, `hf/<namespace>/spaces/<space>/` of the HF Space repo, and
 `hf/<namespace>/datasets/<dataset>/` of the HF dataset repo (cloned with
 `GIT_LFS_SKIP_SMUDGE=1` — weights stay as LFS pointers, never materialized
 locally; gated repos need HF git credentials). Init only the submodules you
-need — via the launcher's `load|unload <models|spaces|datasets> <service>
-<namespace> <name>` operations (`list namespaces` shows the account's namespaces and
+need — via the launcher's `load|unload <models|spaces|datasets|jobs>
+<service> <namespace> <name>` operations (`list namespaces` shows the account's namespaces and
 which are loaded). Launcher targets keep the `<namespace>/<model>/...`
 syntax; lib/main.py maps them to `hf/<namespace>/models/<model>/`. Stage subfolders — `data-preparation/`,
 `training/`, `evaluation/`, `testing/`, … — exist only when actually exercised (no
@@ -60,6 +60,18 @@ layout for anything that runs on another service (`kaggle/`, …). An external g
 its own externals.json only if it delegates further; the current Kaggle
 external delegates nothing, so it has none.
 
+A JOB's content lives in **staging storage** — the source of truth: a
+private HF storage bucket `<namespace>/<job>` for huggingface, a private
+Kaggle dataset named after the job (marked by `mlops-jobs` in its
+subtitle — Kaggle rejects custom tags; the subtitle is server-side
+searchable) for kaggle. `create|delete jobs` create/delete that staging;
+`load|unload jobs` sync it into / delete the gitignored local cache
+(`hf/<ns>/jobs/<name>` or `kaggle/<ns>/jobs/<name>` — all of
+`kaggle/<ns>/` and `hf/<ns>/jobs/` are remote-backed caches, never
+committed). `list jobs` lists the staging entities; run instances remain
+the business of `execute` / `status jobs`. Load a kaggle job before
+`execute`-ing its scripts — resolution reads the local cache.
+
 All scripts must be self-explanatory via comments.
 
 ## Conventions
@@ -69,16 +81,18 @@ All scripts must be self-explanatory via comments.
 - Launcher: `./mlops.sh <operation> <entity> [args]` (Windows:
   `.\mlops.ps1`) — operations are verbs, the entity is their first
   mandatory argument: `list <namespaces|models|spaces|datasets|jobs>`;
-  `load|unload <models|spaces|datasets> <service> <namespace> <name>`
-  (materialize / deinit the Hub repo's submodule under `hf/`; only
-  huggingface hosts loadable git repos); `git <models|spaces|datasets>
+  `load|unload <models|spaces|datasets|jobs> <service> <namespace> <name>
+  [-f]` (materialize / remove the entity's local copy — hf repo entities as
+  submodules under `hf/` [-f: full submodule removal], kaggle entities as
+  downloads, jobs from their staging storage); `git <models|spaces|datasets>
   <service> <namespace> <name> <git args...>` (proxy a git command to that
-  submodule); `execute jobs <namespace>/<model>/<type>/<script_name>`;
+  submodule; only huggingface hosts git repos); `execute jobs
+  <namespace>/<model>/<type>/<script_name>`;
   `status jobs <run_id> [service]`; `create|delete
   <models|spaces|datasets|jobs> <service> <namespace> <name>` (create/delete
-  `<namespace>/<name>` on the remote service; delete is destructive and
-  remote-only — local submodules are removed via `unload`); and
-  `help [operation [entity]]`.
+  `<namespace>/<name>` on the remote service — jobs: their staging storage;
+  delete is destructive and remote-only — local copies are removed via
+  `unload`); and `help [operation [entity]]`.
   The wrappers only
   check prerequisites (git, python), install uv, and `uv sync`; `lib/main.py`
   for `execute jobs` resolves the target (model folder first, then

@@ -7,15 +7,16 @@ acts on.
   baseoperation.py BaseOperation — the interface + error wrapper (run()
               prints any error together with the operation's helptext)
   list.py     ListOperation    — list <namespaces|models|spaces|datasets|jobs>
-  repo.py     RepoOperation    — shared base for the repo operations below
-  load.py     LoadOperation    — load <models|spaces|datasets> <ns> <name>
-  unload.py   UnloadOperation  — unload <models|spaces|datasets> <ns> <name>
-  git.py      GitOperation     — git <models|spaces|datasets> <ns> <name> <args...>
+  git.py      GitOperation     — git <models|spaces|datasets> <service> <ns> <name> <args...>
   execute.py  ExecuteOperation — execute jobs <ns>/<model>/<type>/<script>
   status.py   StatusOperation  — status jobs <run_id> [service]
   remote.py   RemoteOperation  — shared base for the remote-entity operations below
-  create.py   CreateOperation  — create <models|spaces|datasets|jobs> <service> <name>
-  delete.py   DeleteOperation  — delete <models|spaces|datasets|jobs> <service> <name>
+  create.py   CreateOperation  — create <entity> <service> <ns> <name>
+  delete.py   DeleteOperation  — delete <entity> <service> <ns> <name>
+  load.py     LoadOperation    — load <entity> <service> <ns> <name>
+  unload.py   UnloadOperation  — unload <entity> <service> <ns> <name> [-f]
+              (entities: models|spaces|datasets|jobs; the HOW is each
+              service's BaseService._create/_delete/_load/_unload)
 """
 
 from lib.operations.create import CreateOperation
