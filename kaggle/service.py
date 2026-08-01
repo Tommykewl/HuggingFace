@@ -7,7 +7,8 @@ Implements the full BaseService contract:
   run()           -> run id "<user>/<kernel-slug>" (the pushed kernel ref)
   get_status(id)  -> kernels_status: QUEUED / RUNNING / COMPLETE / ERROR ...
   list(entity)    -> "jobs": kernels_list(mine=True);
-                     "datasets": dataset_list(mine=True); nothing else
+                     "datasets": dataset_list(mine=True); "namespaces":
+                     the logged-in username; nothing else
   create(...)     -> always errors: Kaggle creates nothing by name (kernels
                      appear via kernels_push, datasets/models via uploads)
   delete(entity, name) -> "jobs": kernels_delete; "datasets":
@@ -152,8 +153,12 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
         """The single listing implementation (see the BaseService contract).
 
         "jobs" -> the current user's kernels, newest first; "datasets" ->
-        the current user's datasets as "<user>/<slug>" references."""
-        api, _ = self._api()
+        the current user's datasets as "<user>/<slug>" references;
+        "namespaces" -> the logged-in username (Kaggle has no orgs — the
+        account is its only namespace)."""
+        api, user = self._api()
+        if entity == "namespaces":
+            return [user]
         if entity == "jobs":
             kernels = api.kernels_list(mine=True, page_size=50, sort_by="dateRun") or []
             return [{"id": str(k.ref), "title": str(getattr(k, "title", "") or ""),
@@ -162,7 +167,7 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
         if entity == "datasets":
             datasets = api.dataset_list(mine=True) or []
             return [str(d.ref) for d in datasets if d]
-        return None  # entity unknown here (e.g. Kaggle has no Spaces/namespaces)
+        return None      # entity unknown here (e.g. Kaggle has no Spaces)
 
     def _create(self, entity: str, name: str) -> str:
         """Kaggle creates nothing by name (see the BaseService contract):

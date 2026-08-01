@@ -41,8 +41,9 @@ class ListOperation(BaseOperation):
 
     _helptext = [
         ("list namespaces",
-         "List the account's namespaces on every service that has them (on\n"
-         "the Hub: the user + every org)."),
+         "List the account's namespaces on every service with credentials in\n"
+         ".env (the Hub: the user + every org; Kaggle: the logged-in\n"
+         "username)."),
         ("list models",
          "List the account's models on every service with credentials in .env\n"
          "(the Hub groups them per account namespace, marking each repo loaded\n"
