@@ -6,7 +6,7 @@ library is used directly (the kaggle CLI is only a wrapper around it).
 Implements the full BaseService contract:
   run()           -> run id "<user>/<kernel-slug>" (the pushed kernel ref)
   get_status(id)  -> kernels_status: QUEUED / RUNNING / COMPLETE / ERROR ...
-  list(kind)      -> "runs": kernels_list(mine=True);
+  list(entity)    -> "jobs": kernels_list(mine=True);
                      "datasets": dataset_list(mine=True); nothing else
   login()         -> mandates Kaggle credentials in the environment
                      (workspace .env, loaded at startup) — the only login
@@ -19,7 +19,7 @@ The kaggle library (not kagglehub) is used deliberately: kagglehub has no
 kernel push/status/list and no dataset-existence check — only auth,
 dataset/model download+upload, and notebook-output download.
 
-Given a resolved notebook (e.g. kaggle/jobs/<ref>/training/
+Given a resolved notebook (e.g. kaggle/<username>/jobs/<ref>/training/
 index.kaggle.ipynb), run():
 
   1. authenticates via the kaggle library (~/.kaggle/kaggle.json or
@@ -45,14 +45,14 @@ index.kaggle.ipynb), run():
   5. verifies every mount BEFORE pushing (each dataset must exist, each source
      kernel must be COMPLETE — its output is the staged data), so a missing
      mount can never burn GPU time;
-  6. pushes the kernel, which queues the run, and prints how to monitor it.
+  6. pushes the kernel, which queues the job, and prints how to monitor it.
 
-Why the checks are strict: runs here cost real GPU quota. A push that would
+Why the checks are strict: jobs here cost real GPU quota. A push that would
 start without its data mount would silently fall back to a many-small-files
 Hub download that once consumed an entire 18-hour session.
 
 Background on the pinned options (see also the config.json notes):
-  * machine_shape must be NvidiaTeslaT4 for GPU runs — the API default GPU is
+  * machine_shape must be NvidiaTeslaT4 for GPU jobs — the API default GPU is
     a P100 (sm_60), for which Kaggle's torch ships no CUDA kernels ("no kernel
     image is available for execution on the device");
   * the HF token rides in the private external-secrets dataset because Kaggle
@@ -127,37 +127,37 @@ class KaggleService(BaseService):
   open https://www.kaggle.com/code/{kernel}    # live logs
 
 Hub target: https://huggingface.co/{model}
-If a training run finished but nothing was pushed to the Hub, the secrets
+If a training job finished but nothing was pushed to the Hub, the secrets
 dataset wasn't readable — the model was saved to the kernel Output tab instead.""")
-        return kernel                      # the run id: "<user>/<kernel-slug>"
+        return kernel                      # the job id: "<user>/<kernel-slug>"
 
     # -- status / listings (guarded by the BaseService wrappers) --------------
-    def _get_status(self, run_id: str) -> str:
-        """Status string for a kernel run id ("<user>/<kernel-slug>")."""
+    def _get_status(self, job_id: str) -> str:
+        """Status string for a kernel job id ("<user>/<kernel-slug>")."""
         api, _ = self._api()
         try:
-            response = api.kernels_status(run_id)
+            response = api.kernels_status(job_id)
         except Exception as exc:
-            sys.exit(f"Cannot get status of '{run_id}': {exc}")
+            sys.exit(f"Cannot get status of '{job_id}': {exc}")
         status = str(getattr(response, "status", response))
         failure = getattr(response, "failure_message", None)
         return f"{status} ({failure})" if failure else status
 
-    def _list(self, kind: str) -> list:
+    def _list(self, entity: str) -> list:
         """The single listing implementation (see the BaseService contract).
 
-        "runs" -> the current user's kernels, newest first; "datasets" ->
+        "jobs" -> the current user's kernels, newest first; "datasets" ->
         the current user's datasets as "<user>/<slug>" references."""
         api, _ = self._api()
-        if kind == "runs":
+        if entity == "jobs":
             kernels = api.kernels_list(mine=True, page_size=50, sort_by="dateRun") or []
             return [{"id": str(k.ref), "title": str(getattr(k, "title", "") or ""),
-                     "status": None}       # kernels_list carries no per-run status;
-                    for k in kernels if k] # use get_status(id) for a specific run
-        if kind == "datasets":
+                     "status": None}       # kernels_list carries no per-job status;
+                    for k in kernels if k] # use get_status(id) for a specific job
+        if entity == "datasets":
             datasets = api.dataset_list(mine=True) or []
             return [str(d.ref) for d in datasets if d]
-        return None    # kind unknown here (e.g. Kaggle has no Spaces/namespaces)
+        return None  # entity unknown here (e.g. Kaggle has no Spaces/namespaces)
 
     # -- helpers ------------------------------------------------------------
     def _setup(self) -> None:
@@ -293,13 +293,13 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
 
     @staticmethod
     def _push(api, notebook: Path, meta: dict, timeout_seconds=None) -> str:
-        """Stage notebook + metadata in a temp dir and push (queues the run)."""
+        """Stage notebook + metadata in a temp dir and push (queues the job)."""
         with tempfile.TemporaryDirectory() as stage:
             shutil.copy(notebook, stage)
             meta["code_file"] = notebook.name
             with open(Path(stage) / "kernel-metadata.json", "w") as fh:
                 json.dump(meta, fh, indent=2)
-            if timeout_seconds:            # config "timeout_seconds": run cap
+            if timeout_seconds:            # config "timeout_seconds": job cap
                 response = api.kernels_push(stage, timeout=str(timeout_seconds))
             else:
                 response = api.kernels_push(stage)

@@ -39,8 +39,10 @@ MachineLearningMaster/                  ← workspace root
 │           └── externals.json          – operations this model delegates to external services
 └── <service>/                          – everything that runs on another service, e.g. kaggle/
     ├── service.py                      – the service's runner: one BaseService subclass
-    └── jobs/<reference>/               – referenced from a model's externals.json;
-        └── ...                           same stage layout, e.g. index.kaggle.ipynb + config
+    └── <namespace>/jobs/<reference>/   – referenced from a model's externals.json;
+        └── ...                           <namespace> = the account's username on the
+                                          service; same stage layout, e.g.
+                                          index.kaggle.ipynb + config
 ```
 
 `hf/<namespace>/models/<model>` is a **git submodule of the model's HF repo**:
@@ -50,7 +52,8 @@ MachineLearningMaster/                  ← workspace root
 on instead of pulling everything. A model folder
 holds the first-party pipeline (run as Hugging Face Jobs); anything that runs
 elsewhere — e.g. Kaggle's free GPUs — lives under
-`<service>/jobs/<reference>/` at the repo root with the same stage layout,
+`<service>/<namespace>/jobs/<reference>/` at the repo root (the namespace
+being the account's username on that service) with the same stage layout,
 referenced from the model's `externals.json`. Every runnable has an adjacent
 `<name>.config.json` declaring exactly how it runs.
 
@@ -62,7 +65,7 @@ referenced from the model's `externals.json`. Every runnable has an adjacent
   (`README.md`, uploaded verbatim), `externals.json`, and the first-party
   `inference/` stage (the repo's Colab/Kaggle `notebook.ipynb` template).
   All other operations run on Kaggle:
-  [`kaggle/jobs/rtdetr-sportsmot/`](kaggle/jobs/rtdetr-sportsmot/).
+  [`kaggle/tamobiswas/jobs/rtdetr-sportsmot/`](kaggle/tamobiswas/jobs/rtdetr-sportsmot/).
 
   | Stage (kaggle) | Runnables |
   |---|---|

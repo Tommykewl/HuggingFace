@@ -65,8 +65,8 @@ def resolve_script(ns, model_name, type_, name):
     externals = model_dir / "externals.json"
     if externals.is_file():
         for entry in json.load(open(externals)).get("externals", []):
-            service, ref = entry.get("service"), entry.get("reference")
-            if not service or not ref:
+            service, ext_path = entry.get("service"), entry.get("path")
+            if not service or not ext_path:
                 continue
             operation = next(
                 (op for op in entry.get("used_for", [])
@@ -77,7 +77,10 @@ def resolve_script(ns, model_name, type_, name):
                         if a.get("type") == "script"}
             if name not in declared:
                 continue               # undeclared -> invisible to resolution
-            for p in runnables(ROOT / service / "jobs" / ref / type_):
+            # The entry's path IS the external's root — by convention
+            # <service>/<namespace>/jobs/<reference> (the namespace being
+            # the account name on that service, mirroring hf/<ns>/...).
+            for p in runnables(ROOT / ext_path / type_):
                 candidates.append((service, p))
 
     if not candidates:

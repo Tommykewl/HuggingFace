@@ -54,7 +54,8 @@ to resolution),
 kernel outputs, Hub artifacts — belong in the runnable's config.json, never
 here. Orchestration tooling resolves references from this file.
 
-`<service>/jobs/<reference>/` (at the repo root) mirrors the same stage
+`<service>/<namespace>/jobs/<reference>/` (at the repo root, `<namespace>`
+being the account's username on that service) mirrors the same stage
 layout for anything that runs on another service (`kaggle/`, …). An external gets
 its own externals.json only if it delegates further; the current Kaggle
 external delegates nothing, so it has none.
