@@ -265,6 +265,7 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
                 if ref not in {str(d.ref) for d in self._jobs_datasets(api)}:
                     sys.exit(f"ERROR: '{ref}' is not a job staging dataset "
                              f"(no '{JOBS_MARKER}' subtitle) — see: list jobs")
+                self._refuse_active_runs(name, "delete")
                 api.dataset_delete(namespace, name, no_confirm=True)
                 return f"{ref} (staging dataset)"
             if entity == "datasets":
@@ -324,11 +325,14 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
                 force: bool = False) -> str:
         """Remove the local copy of <namespace>/<name> (see the BaseService
         contract): a plain folder delete — Kaggle keeps the content (for
-        jobs, the staging dataset is the source of truth). force is
-        meaningless here (nothing is git-registered) and ignored."""
+        jobs, the staging dataset is the source of truth; refused while
+        any of the job's kernels is queued/running). force is meaningless
+        here (nothing is git-registered) and ignored."""
         if entity not in ("datasets", "jobs"):
             sys.exit(f"Cannot unload '{entity}' on kaggle — datasets and "
                      "jobs only")
+        if entity == "jobs":
+            self._refuse_active_runs(name, "unload")
         target = self._local_dir(entity, namespace, name)
         rel = target.relative_to(ROOT)
         if not target.is_dir():
@@ -336,6 +340,28 @@ dataset wasn't readable — the model was saved to the kernel Output tab instead
         shutil.rmtree(target)
         return (f"{rel} (deleted locally — kaggle keeps the content; "
                 f"`load {entity}` restores it)")
+
+    def _refuse_active_runs(self, name, verb):
+        """Block unload/delete of job <name> while any of its kernels is
+        still queued or running. A job's kernels are slugged
+        '<job name>-<type>-<script>' (see run()), so the name prefix
+        scopes the sweep; kernels_list carries no status, so each
+        candidate is checked via kernels_status."""
+        api, user = self._api()
+        active = []
+        for k in api.kernels_list(mine=True, page_size=50, search=name) or []:
+            ref = str(k.ref) if k else ""
+            if not ref.startswith(f"{user}/{name}-"):
+                continue
+            try:
+                status = str(getattr(api.kernels_status(ref), "status", ""))
+            except Exception:
+                continue               # unreadable status never blocks
+            if status.lower() in ("queued", "running"):
+                active.append(f"{ref} ({status})")
+        if active:
+            sys.exit(f"ERROR: cannot {verb} job '{name}' — kernels still "
+                     "active:\n  " + "\n  ".join(active))
 
     # -- helpers ------------------------------------------------------------
     def _setup(self) -> None:

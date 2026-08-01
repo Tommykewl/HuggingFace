@@ -31,7 +31,8 @@ class UnloadOperation(RemoteOperation):
         ("unload jobs <service> <namespace> <job_name>",
          "Delete the job's local artifacts folder (hf/<ns>/jobs/<name> or\n"
          "kaggle/<ns>/jobs/<name>) — the staging storage keeps the\n"
-         "artifacts: it is the source of truth, `load jobs` restores them."),
+         "artifacts: it is the source of truth, `load jobs` restores them.\n"
+         "Refused while any of the job's runs/kernels is still active."),
     ]
 
     def _run(self, mandatory, optional, vargs):

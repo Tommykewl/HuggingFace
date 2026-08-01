@@ -248,7 +248,8 @@ class HuggingFaceService(BaseService):
             # Deleting a job deletes its staging bucket — artifacts and
             # all. Only the JOBS_BUCKET_PREFIX-marked bucket is targeted,
             # so a normal bucket can never be deleted through the jobs
-            # entity.
+            # entity. Refused while any of the job's runs is still active.
+            self._refuse_active_runs(api, name, "delete")
             bucket_id = f"{namespace}/{JOBS_BUCKET_PREFIX}{name}"
             try:
                 api.delete_bucket(bucket_id)
@@ -367,11 +368,32 @@ class HuggingFaceService(BaseService):
                               ignore_errors=True)
             return f"{rel} (removed — staged; commit to share the removal)"
         if entity == "jobs":
+            self._refuse_active_runs(self._hub().HfApi(), name, "unload")
             if not target.is_dir():
                 sys.exit(f"'{rel}' is not loaded — nothing to do")
             shutil.rmtree(target)
             return f"{rel} (deleted locally — the staging bucket keeps the artifacts)"
         sys.exit(f"Cannot unload '{entity}' on huggingface — no such concept")
+
+    @staticmethod
+    def _refuse_active_runs(api, name, verb):
+        """Block unload/delete of job <name> while any of its Hub Job runs
+        is still active. Hub run records carry no job-entity link, so a
+        run is attributed to the job when its command references the job
+        name — the job's runnables live under hf/<ns>/jobs/<name>/, so
+        their submitted paths carry it."""
+        active = []
+        for job in api.list_jobs():
+            status = getattr(job, "status", None)
+            stage = str(getattr(status, "stage", status) or "").upper()
+            if stage in ("COMPLETED", "ERROR", "CANCELED", "CANCELLED"):
+                continue
+            command = " ".join(map(str, getattr(job, "command", None) or []))
+            if name in command:
+                active.append(f"{getattr(job, 'id', '?')} ({stage})")
+        if active:
+            sys.exit(f"ERROR: cannot {verb} job '{name}' — runs still "
+                     "active:\n  " + "\n  ".join(active))
 
     @staticmethod
     def _submodule_name(rel):

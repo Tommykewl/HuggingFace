@@ -30,7 +30,8 @@ class DeleteOperation(RemoteOperation):
          "and all (huggingface: the storage bucket; kaggle: the mlops-jobs\n"
          "dataset, marker-verified first so a plain data dataset can never\n"
          "be deleted through the jobs entity). DESTRUCTIVE: the staging is\n"
-         "the source of truth for the job."),
+         "the source of truth for the job. Refused while any of the job's\n"
+         "runs/kernels is still active."),
     ]
 
     def _run(self, mandatory, optional, vargs):
