@@ -61,7 +61,9 @@ its own externals.json only if it delegates further; the current Kaggle
 external delegates nothing, so it has none.
 
 A JOB's content lives in **staging storage** — the source of truth: a
-private HF storage bucket `<namespace>/<job>` for huggingface, a private
+private HF storage bucket `<namespace>/mlops-jobs-<job>` for huggingface
+(buckets have no metadata/tags; the name is the only server-side-searchable
+field, so the marker is a name prefix), a private
 Kaggle dataset named after the job (marked by `mlops-jobs` in its
 subtitle — Kaggle rejects custom tags; the subtitle is server-side
 searchable) for kaggle. `create|delete jobs` create/delete that staging;

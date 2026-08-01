@@ -27,9 +27,12 @@ class CreateOperation(RemoteOperation):
         ("create jobs <service> <namespace> <name>",
          "Create the job <namespace>/<name>'s STAGING STORAGE — the source\n"
          "of truth for its artifacts, which `load jobs` syncs from.\n"
-         "huggingface: a private storage bucket. kaggle: a private dataset\n"
-         "marked 'mlops-jobs' in its subtitle (Kaggle rejects custom tags;\n"
-         "the subtitle is server-side searchable, which `list jobs` uses).\n"
+         "huggingface: a private storage bucket 'mlops-jobs-<name>' (the\n"
+         "name prefix is the jobs marker — buckets have no other\n"
+         "searchable metadata). kaggle: a private dataset marked\n"
+         "'mlops-jobs' in its subtitle (Kaggle rejects custom tags; the\n"
+         "subtitle is server-side searchable). `list jobs` filters on the\n"
+         "markers; both show the job under its plain <namespace>/<name>.\n"
          "Example: create jobs kaggle tamobiswas my-job"),
     ]
 

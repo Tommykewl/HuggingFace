@@ -14,12 +14,14 @@ Implements the full BaseService contract:
                      "datasets" ({namespace: [ids]} per account
                      namespace), "namespaces" (the account's user + orgs)
                      and "jobs" (the job staging buckets per namespace —
-                     the staging IS the job entity)
+                     the staging IS the job entity; marked by the
+                     JOBS_BUCKET_PREFIX name prefix, the only
+                     server-side-searchable bucket field)
   create/delete(entity, namespace, name) -> create_repo / delete_repo for
                      the repo entities (Spaces get the Gradio SDK); "jobs"
                      creates/deletes the private staging bucket
-                     <namespace>/<name> (the source of truth for the
-                     job's artifacts)
+                     <namespace>/mlops-jobs-<name> (the source of truth
+                     for the job's artifacts)
   load/unload(entity, namespace, name) -> repo entities materialize as
                      git submodules under hf/ (unload: deinit, or full
                      removal with force); "jobs" sync from / delete the
@@ -37,6 +39,14 @@ import sys
 from lib.baseservice import BaseService
 from lib.config import REPO_KINDS, ROOT
 from lib.utilities import git, registered_submodules
+
+# A job's staging bucket is named "mlops-jobs-<job name>": buckets carry no
+# metadata/tags/subtitle (BucketInfo is only id/private/created_at/size/
+# total_files), and list_buckets' one server-side filter — search — matches
+# bucket NAMES, so the name is the only place a marker can live and still
+# make `list jobs` a single filtered call. The job keeps its plain <name>
+# everywhere else (CLI arguments, the local hf/<ns>/jobs/<name> cache).
+JOBS_BUCKET_PREFIX = "mlops-jobs-"
 
 
 def hub():
@@ -166,10 +176,16 @@ class HuggingFaceService(BaseService):
         list_datasets)."""
         api = self._hub().HfApi()
         if entity == "jobs":
-            # Jobs are staged in storage buckets (<namespace>/<job name>) —
-            # the staging is the entity, so listing jobs lists the buckets.
-            # (Run instances are tracked via `execute` / `status jobs`.)
-            return {ns: [str(b.id) for b in api.list_buckets(namespace=ns)]
+            # The job staging buckets, filtered server-side by the
+            # JOBS_BUCKET_PREFIX name marker (see its comment), re-checked
+            # client-side (search is a substring match) and shown under
+            # their plain job names. Run instances are tracked via
+            # `execute` / `status jobs`.
+            return {ns: [f"{ns}/{bucket_name[len(JOBS_BUCKET_PREFIX):]}"
+                         for b in api.list_buckets(namespace=ns,
+                                                   search=JOBS_BUCKET_PREFIX)
+                         if (bucket_name := str(b.id).partition("/")[2])
+                         .startswith(JOBS_BUCKET_PREFIX)]
                     for ns in self._list("namespaces")}
         if entity == "namespaces":
             who = api.whoami()
@@ -201,14 +217,15 @@ class HuggingFaceService(BaseService):
                 sys.exit(f"Cannot create {repo_type} '{repo_id}' on the Hub: {exc}")
         if entity == "jobs":
             # A job's staging storage IS the job entity: a private storage
-            # bucket <namespace>/<name> holding the job's artifacts — the
-            # source of truth `load jobs` pulls from.
-            bucket_id = f"{namespace}/{name}"
+            # bucket <namespace>/mlops-jobs-<name> (the name prefix is the
+            # jobs marker — see JOBS_BUCKET_PREFIX) holding the job's
+            # artifacts — the source of truth `load jobs` pulls from.
+            bucket_id = f"{namespace}/{JOBS_BUCKET_PREFIX}{name}"
             try:
                 self._hub().HfApi().create_bucket(bucket_id, private=True)
             except Exception as exc:
                 sys.exit(f"Cannot create job staging bucket '{bucket_id}': {exc}")
-            return f"{bucket_id} (staging bucket)"
+            return f"{namespace}/{name} (staging bucket {bucket_id})"
         sys.exit(f"Cannot create '{entity}' on huggingface — no such concept")
 
     def _delete(self, entity: str, namespace: str, name: str) -> str:
@@ -228,13 +245,16 @@ class HuggingFaceService(BaseService):
                 sys.exit(f"Cannot delete {repo_type} '{repo_id}' on the Hub: {exc}")
             return repo_id
         if entity == "jobs":
-            # Deleting a job deletes its staging bucket — artifacts and all.
-            bucket_id = f"{namespace}/{name}"
+            # Deleting a job deletes its staging bucket — artifacts and
+            # all. Only the JOBS_BUCKET_PREFIX-marked bucket is targeted,
+            # so a normal bucket can never be deleted through the jobs
+            # entity.
+            bucket_id = f"{namespace}/{JOBS_BUCKET_PREFIX}{name}"
             try:
                 api.delete_bucket(bucket_id)
             except Exception as exc:
                 sys.exit(f"Cannot delete job staging bucket '{bucket_id}': {exc}")
-            return f"{bucket_id} (staging bucket)"
+            return f"{namespace}/{name} (staging bucket {bucket_id})"
         sys.exit(f"Cannot delete '{entity}' on huggingface — no such concept")
 
     # -- local materialization (guarded by BaseService.load/unload) ----------
@@ -281,7 +301,7 @@ class HuggingFaceService(BaseService):
                       "gitlink) — commit to keep it tracked")
             return f"{rel}  <->  {url}"
         if entity == "jobs":
-            bucket_id = f"{namespace}/{name}"
+            bucket_id = f"{namespace}/{JOBS_BUCKET_PREFIX}{name}"
             try:
                 api.bucket_info(bucket_id)
             except Exception as exc:

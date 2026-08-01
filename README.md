@@ -58,8 +58,10 @@ referenced from the model's `externals.json`. Every runnable has an adjacent
 `<name>.config.json` declaring exactly how it runs.
 
 A job's content is owned by its **staging storage** — a private HF storage
-bucket (huggingface) or a private Kaggle dataset marked `mlops-jobs` in its
-subtitle (kaggle), named after the job. `create jobs` creates that staging;
+bucket `mlops-jobs-<job>` (huggingface — the name prefix is the jobs
+marker, buckets having no other searchable metadata) or a private Kaggle
+dataset named after the job and marked `mlops-jobs` in its subtitle
+(kaggle). `create jobs` creates that staging;
 `load jobs` syncs it into the gitignored local folder above (do this before
 `execute`-ing its scripts); `unload jobs` deletes the local copy; `delete
 jobs` deletes the staging itself. `list jobs` lists the staging entities.
